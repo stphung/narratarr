@@ -62,6 +62,22 @@ bart farkas|starcraft prima s official strategy guide = skip
 Without Audiobookshelf, point it at a directory of Calibre `.opf` sidecars
 instead: `narratarr /path/to/library`.
 
+## Docker
+
+```yaml
+  narratarr:
+    image: ghcr.io/stphung/narratarr:latest
+    container_name: narratarr
+    volumes:
+      - ./narratarr/config:/config
+    restart: unless-stopped
+```
+
+The first start writes a commented `narratarr.toml` into the config volume and
+waits; edit it and restart. Use compose service names for the URLs
+(`http://audiobookshelf:80`, `http://listenarr:4545`). The image is ~27 MB and
+runs unprivileged.
+
 ## Roadmap
 
 - [x] Matching engine + regression corpus
@@ -70,7 +86,7 @@ instead: `narratarr /path/to/library`.
 - [x] The reconcile loop: `--interval`, review report, human overrides file
 - [x] narratarr.toml config (arr-style: `--init`, /config discovery, dry-run default)
 - [ ] Structured logging + graceful per-cycle error handling
-- [ ] Docker image + compose snippet
+- [x] Docker image + compose snippet (GHCR publish on tag)
 
 `reference-python/` holds the original Python prototype the Rust
 implementation was ported from; it will be removed once the Rust version

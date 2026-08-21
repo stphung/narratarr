@@ -128,6 +128,17 @@ fn apply_overrides(
     }
 }
 
+/// In a container (a /config volume exists), failing fast means a hot restart
+/// loop; pause first so `restart: unless-stopped` behaves like a retry timer.
+fn fail_gently(msg: &str) -> std::process::ExitCode {
+    eprintln!("{msg}");
+    if std::path::Path::new("/config").is_dir() {
+        eprintln!("retrying in 300s");
+        std::thread::sleep(std::time::Duration::from_secs(300));
+    }
+    std::process::ExitCode::FAILURE
+}
+
 fn main() -> std::process::ExitCode {
     let mut args = std::env::args().skip(1);
     let mut books_dir: Option<PathBuf> = None;
@@ -240,8 +251,9 @@ fn main() -> std::process::ExitCode {
     }
 
     if abs_token.as_deref() == Some("CHANGEME") || listenarr_key.as_deref() == Some("CHANGEME") {
-        eprintln!("config still contains CHANGEME placeholders — edit your narratarr.toml");
-        return std::process::ExitCode::FAILURE;
+        return fail_gently(
+            "config still contains CHANGEME placeholders — edit your narratarr.toml",
+        );
     }
     let abs_mode = abs_url.is_some() || abs_token.is_some();
     if abs_mode && (abs_url.is_none() || abs_token.is_none()) {
@@ -249,10 +261,17 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::FAILURE;
     }
     if !abs_mode && books_dir.is_none() {
-        eprintln!(
-            "no book source configured.\n  quick start: narratarr --init   (writes narratarr.toml to edit)\n  or: narratarr <books_dir> [flags]\n  or: narratarr --abs <url> --abs-token <token> --abs-library <name> [flags]"
+        // container first-run: seed the config volume with the example
+        let seed = std::path::Path::new("/config/narratarr.toml");
+        if std::path::Path::new("/config").is_dir()
+            && !seed.exists()
+            && std::fs::write(seed, config::EXAMPLE).is_ok()
+        {
+            return fail_gently("wrote /config/narratarr.toml — edit it and restart the container");
+        }
+        return fail_gently(
+            "no book source configured.\n  quick start: narratarr --init   (writes narratarr.toml to edit)\n  or: narratarr <books_dir> [flags]\n  or: narratarr --abs <url> --abs-token <token> --abs-library <name> [flags]",
         );
-        return std::process::ExitCode::FAILURE;
     }
     let state = match &state_path {
         Some(p) => match Store::open(p) {
