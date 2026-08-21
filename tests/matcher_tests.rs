@@ -271,3 +271,14 @@ fn edition_suffix_words_do_not_block_auto_match() {
     );
     assert_eq!(r.status, Status::Matched);
 }
+
+#[test]
+fn missing_ebook_author_with_strong_title_goes_to_review() {
+    // ABS items sometimes have an empty authorName; a perfect title can't be
+    // confirmed but must not be silently refused
+    let r = match_ebook(
+        &ebook("Atomic Habits", ""),
+        &[cand("Atomic Habits", None, &["James Clear"])],
+    );
+    assert_eq!(r.status, Status::Ambiguous);
+}

@@ -3,10 +3,11 @@
 //!     narratarr /path/to/books --limit 10 [--verbose]
 
 use narratarr::audible;
-use narratarr::listenarr::{self, AddOutcome, BookMetadata};
+use narratarr::listenarr::{AddOutcome, BookMetadata};
 use narratarr::matcher::{match_ebook, query_title, Status};
 use narratarr::opf;
 use narratarr::store::{self, Decision, DecisionStatus, Store, NOT_FOUND_RETRY_SECS};
+use narratarr::{abs, listenarr};
 use std::path::PathBuf;
 
 #[derive(Default)]
@@ -64,6 +65,9 @@ fn main() -> std::process::ExitCode {
     let mut listenarr_key: Option<String> = None;
     let mut apply = false;
     let mut auto_search = false;
+    let mut abs_url: Option<String> = None;
+    let mut abs_token: Option<String> = None;
+    let mut abs_library: Option<String> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--limit" => limit = args.next().and_then(|v| v.parse().ok()).unwrap_or(10),
@@ -72,17 +76,25 @@ fn main() -> std::process::ExitCode {
             "--state" => state_path = args.next().map(PathBuf::from),
             "--listenarr" => listenarr_url = args.next(),
             "--listenarr-key" => listenarr_key = args.next(),
+            "--abs" => abs_url = args.next(),
+            "--abs-token" => abs_token = args.next(),
+            "--abs-library" => abs_library = args.next(),
             "--apply" => apply = true,
             "--auto-search" => auto_search = true,
             _ => books_dir = Some(PathBuf::from(a)),
         }
     }
-    let Some(dir) = books_dir else {
+    let abs_mode = abs_url.is_some() || abs_token.is_some();
+    if abs_mode && (abs_url.is_none() || abs_token.is_none()) {
+        eprintln!("--abs and --abs-token must be given together");
+        return std::process::ExitCode::FAILURE;
+    }
+    if !abs_mode && books_dir.is_none() {
         eprintln!(
-            "usage: narratarr <books_dir> [--limit N] [--verbose] [--lang en] [--state file.db]"
+            "usage: narratarr <books_dir> [--limit N] [--verbose] [--lang en] [--state file.db]\n       narratarr --abs <url> --abs-token <token> --abs-library <name> [...]"
         );
         return std::process::ExitCode::FAILURE;
-    };
+    }
     let state = match &state_path {
         Some(p) => match Store::open(p) {
             Ok(s) => Some(s),
@@ -106,32 +118,71 @@ fn main() -> std::process::ExitCode {
     }
     let mut sync = SyncStats::default();
 
-    let mut opfs: Vec<PathBuf> = match std::fs::read_dir(&dir) {
-        Ok(rd) => rd
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "opf"))
-            .collect(),
-        Err(e) => {
-            eprintln!("cannot read {}: {e}", dir.display());
-            return std::process::ExitCode::FAILURE;
-        }
-    };
-    opfs.sort();
-    opfs.truncate(limit);
-
     let (mut matched, mut ambiguous, mut not_found, mut errors) = (0, 0, 0, 0);
     let mut skipped = 0;
-    for opf_path in &opfs {
-        let Some(mut ebook) = opf::read_opf(opf_path) else {
-            errors += 1;
-            println!(
-                "?? unreadable opf: {}",
-                opf_path.file_name().unwrap_or_default().to_string_lossy()
-            );
-            continue;
-        };
 
+    let mut ebooks = if let (Some(u), Some(t)) = (&abs_url, &abs_token) {
+        let client = abs::Client::new(u, t);
+        let libs = match client.libraries() {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("cannot list ABS libraries: {e}");
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+        let lib = abs_library
+            .as_ref()
+            .and_then(|want| libs.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(want)));
+        let Some((lib_id, lib_name, _)) = lib else {
+            eprintln!("--abs-library must name one of the ABS libraries:");
+            for (_, name, mt) in &libs {
+                eprintln!("  {name} ({mt})");
+            }
+            return std::process::ExitCode::FAILURE;
+        };
+        match client.ebooks(lib_id) {
+            Ok(b) => {
+                println!("loaded {} items from ABS library {lib_name:?}\n", b.len());
+                b
+            }
+            Err(e) => {
+                eprintln!("cannot list items of ABS library {lib_name:?}: {e}");
+                return std::process::ExitCode::FAILURE;
+            }
+        }
+    } else {
+        let dir = books_dir.expect("checked above");
+        let mut opfs: Vec<PathBuf> = match std::fs::read_dir(&dir) {
+            Ok(rd) => rd
+                .filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "opf"))
+                .collect(),
+            Err(e) => {
+                eprintln!("cannot read {}: {e}", dir.display());
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+        opfs.sort();
+        let mut books = Vec::new();
+        for p in &opfs {
+            match opf::read_opf(p) {
+                Some(b) => books.push(b),
+                None => {
+                    errors += 1;
+                    println!(
+                        "?? unreadable opf: {}",
+                        p.file_name().unwrap_or_default().to_string_lossy()
+                    );
+                }
+            }
+        }
+        books
+    };
+    ebooks.sort_by(|a, b| a.title.cmp(&b.title));
+    ebooks.truncate(limit);
+
+    for mut ebook in ebooks {
         // Per-book language metadata is unreliable (English books tagged "zho"
         // by scraper-sourced epubs); the user's preferred language is config.
         ebook.language = Some(lang.clone());

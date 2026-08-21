@@ -440,12 +440,16 @@ pub fn match_ebook(ebook: &Ebook, candidates: &[Candidate]) -> MatchResult {
         .find(|s| !s.penalties.contains(&"derivative-work"))
         .cloned();
 
+    // An ebook with NO author metadata can never confirm a match, but a very
+    // strong title deserves human review rather than silent refusal.
+    let author_unknown = normalize_author(&ebook.author).is_empty();
     let status = match &best {
         None => Status::NotFound,
         Some(b) if b.total >= MATCH_THRESHOLD && b.author_score >= MIN_AUTHOR_SCORE => {
             Status::Matched
         }
         Some(b) if b.total >= AMBIGUOUS_THRESHOLD => Status::Ambiguous,
+        Some(b) if author_unknown && b.title_score >= 0.9 => Status::Ambiguous,
         Some(_) => Status::NotFound,
     };
 
