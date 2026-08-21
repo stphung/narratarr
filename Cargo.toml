@@ -1,8 +1,8 @@
 [package]
-name = "shelfspoken"
+name = "narratarr"
 version = "0.1.0"
 edition = "2021"
-description = "Your shelf, spoken: mirrors an ebook library into a monitored audiobook collection"
+description = "The narrator for your bookshelf: mirrors an ebook library into a monitored audiobook collection"
 license = "MIT"
 
 [dependencies]

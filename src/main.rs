@@ -1,10 +1,10 @@
-//! Try shelfspoken's matcher against a directory of Calibre-style ebooks.
+//! Try narratarr's matcher against a directory of Calibre-style ebooks.
 //!
-//!     shelfspoken /path/to/books --limit 10 [--verbose]
+//!     narratarr /path/to/books --limit 10 [--verbose]
 
-use shelfspoken::audible;
-use shelfspoken::matcher::{match_ebook, query_title, Status};
-use shelfspoken::opf;
+use narratarr::audible;
+use narratarr::matcher::{match_ebook, query_title, Status};
+use narratarr::opf;
 use std::path::PathBuf;
 
 fn main() -> std::process::ExitCode {
@@ -22,7 +22,7 @@ fn main() -> std::process::ExitCode {
         }
     }
     let Some(dir) = books_dir else {
-        eprintln!("usage: shelfspoken <books_dir> [--limit N] [--verbose]");
+        eprintln!("usage: narratarr <books_dir> [--limit N] [--verbose]");
         return std::process::ExitCode::FAILURE;
     };
 
@@ -53,7 +53,7 @@ fn main() -> std::process::ExitCode {
         ebook.language = Some(lang.clone());
 
         let q = query_title(&ebook.title);
-        let primary = shelfspoken::matcher::primary_author(&ebook.author);
+        let primary = narratarr::matcher::primary_author(&ebook.author);
         let author = if primary.is_empty() { None } else { Some(primary.as_str()) };
         let candidates = match audible::search(&q, author) {
             // bad author metadata is common; retry on title alone and let the

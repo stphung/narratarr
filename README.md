@@ -1,6 +1,6 @@
-# shelfspoken
+# narratarr
 
-**Your shelf, spoken.** shelfspoken mirrors an ebook library into a monitored
+**The narrator for your bookshelf.** narratarr mirrors an ebook library into a monitored
 audiobook collection: it reads the books you already own, finds each one's
 audiobook edition, and (eventually) hands the wanted list to an audiobook
 automation stack — so your library builds its own audio twin with no input

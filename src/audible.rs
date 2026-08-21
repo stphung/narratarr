@@ -13,7 +13,7 @@ pub fn search(title: &str, author: Option<&str>) -> Result<Vec<Candidate>, Box<d
         .query("num_results", "20")
         .query("response_groups", GROUPS)
         .query("products_sort_by", "Relevance")
-        .set("User-Agent", "shelfspoken/0.1");
+        .set("User-Agent", "narratarr/0.1");
     if let Some(a) = author {
         req = req.query("author", a);
     }

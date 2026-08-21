@@ -2,7 +2,7 @@
 //! Calibre library on 2026-08-20. If a heuristic tweak changes any of these,
 //! it must be a conscious decision.
 
-use shelfspoken::matcher::*;
+use narratarr::matcher::*;
 
 fn ebook(title: &str, author: &str) -> Ebook {
     Ebook { title: title.into(), author: author.into(), language: Some("en".into()) }
