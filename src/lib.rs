@@ -5,6 +5,7 @@
 
 pub mod abs;
 pub mod audible;
+pub mod config;
 pub mod listenarr;
 pub mod matcher;
 pub mod opf;

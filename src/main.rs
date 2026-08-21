@@ -3,6 +3,7 @@
 //!     narratarr /path/to/books --limit 10 [--verbose]
 
 use narratarr::audible;
+use narratarr::config;
 use narratarr::listenarr::{AddOutcome, BookMetadata};
 use narratarr::matcher::{match_ebook, query_title, Status};
 use narratarr::opf;
@@ -130,9 +131,11 @@ fn apply_overrides(
 fn main() -> std::process::ExitCode {
     let mut args = std::env::args().skip(1);
     let mut books_dir: Option<PathBuf> = None;
-    let mut limit = 10usize;
+    let mut limit: Option<usize> = None;
     let mut verbose = false;
-    let mut lang = String::from("en");
+    let mut lang: Option<String> = None;
+    let mut config_path: Option<PathBuf> = None;
+    let mut init = false;
     let mut state_path: Option<PathBuf> = None;
     let mut listenarr_url: Option<String> = None;
     let mut listenarr_key: Option<String> = None;
@@ -146,9 +149,11 @@ fn main() -> std::process::ExitCode {
     let mut overrides_path: Option<PathBuf> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--limit" => limit = args.next().and_then(|v| v.parse().ok()).unwrap_or(10),
+            "--limit" => limit = args.next().and_then(|v| v.parse().ok()),
             "--verbose" => verbose = true,
-            "--lang" => lang = args.next().unwrap_or_else(|| "en".into()),
+            "--lang" => lang = args.next(),
+            "--config" => config_path = args.next().map(PathBuf::from),
+            "--init" => init = true,
             "--state" => state_path = args.next().map(PathBuf::from),
             "--listenarr" => listenarr_url = args.next(),
             "--listenarr-key" => listenarr_key = args.next(),
@@ -163,14 +168,89 @@ fn main() -> std::process::ExitCode {
             _ => books_dir = Some(PathBuf::from(a)),
         }
     }
+    if init {
+        let p = PathBuf::from("narratarr.toml");
+        if p.exists() {
+            eprintln!("narratarr.toml already exists; not overwriting");
+            return std::process::ExitCode::FAILURE;
+        }
+        if let Err(e) = std::fs::write(&p, config::EXAMPLE) {
+            eprintln!("cannot write narratarr.toml: {e}");
+            return std::process::ExitCode::FAILURE;
+        }
+        println!("wrote narratarr.toml — edit it, then run `narratarr`");
+        return std::process::ExitCode::SUCCESS;
+    }
+
+    // Config file first, CLI flags override.
+    let cfg = match &config_path {
+        Some(p) => match config::load(p) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("{e}");
+                return std::process::ExitCode::FAILURE;
+            }
+        },
+        None => match config::discover() {
+            Some(p) => {
+                println!("using config {}", p.display());
+                match config::load(&p) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return std::process::ExitCode::FAILURE;
+                    }
+                }
+            }
+            None => config::Config::default(),
+        },
+    };
+    let lang = lang.unwrap_or_else(|| cfg.general.language.clone());
+    let limit = limit
+        .or(if cfg.general.limit == 0 {
+            None
+        } else {
+            Some(cfg.general.limit)
+        })
+        .unwrap_or(usize::MAX);
+    let apply = apply || cfg.general.apply;
+    let auto_search = auto_search || cfg.general.auto_search;
+    let interval = interval.or_else(|| cfg.general.interval.clone());
+    let state_path = state_path.or_else(|| cfg.general.state_file.as_ref().map(PathBuf::from));
+    let report_path = report_path.or_else(|| cfg.general.report_file.as_ref().map(PathBuf::from));
+    let overrides_path =
+        overrides_path.or_else(|| cfg.general.overrides_file.as_ref().map(PathBuf::from));
+    if abs_url.is_none() && abs_token.is_none() {
+        if let Some(a) = &cfg.audiobookshelf {
+            abs_url = Some(a.url.clone());
+            abs_token = Some(a.token.clone());
+            if abs_library.is_none() {
+                abs_library = Some(a.library.clone());
+            }
+        }
+    }
+    if listenarr_url.is_none() && listenarr_key.is_none() {
+        if let Some(l) = &cfg.listenarr {
+            listenarr_url = Some(l.url.clone());
+            listenarr_key = Some(l.api_key.clone());
+        }
+    }
+    if books_dir.is_none() {
+        books_dir = cfg.general.books_dir.as_ref().map(PathBuf::from);
+    }
+
+    if abs_token.as_deref() == Some("CHANGEME") || listenarr_key.as_deref() == Some("CHANGEME") {
+        eprintln!("config still contains CHANGEME placeholders — edit your narratarr.toml");
+        return std::process::ExitCode::FAILURE;
+    }
     let abs_mode = abs_url.is_some() || abs_token.is_some();
     if abs_mode && (abs_url.is_none() || abs_token.is_none()) {
-        eprintln!("--abs and --abs-token must be given together");
+        eprintln!("audiobookshelf needs both url and token");
         return std::process::ExitCode::FAILURE;
     }
     if !abs_mode && books_dir.is_none() {
         eprintln!(
-            "usage: narratarr <books_dir> [--limit N] [--verbose] [--lang en] [--state file.db]\n       narratarr --abs <url> --abs-token <token> --abs-library <name> [...]"
+            "no book source configured.\n  quick start: narratarr --init   (writes narratarr.toml to edit)\n  or: narratarr <books_dir> [flags]\n  or: narratarr --abs <url> --abs-token <token> --abs-library <name> [flags]"
         );
         return std::process::ExitCode::FAILURE;
     }

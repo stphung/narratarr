@@ -37,14 +37,30 @@ Two rules learned the hard way:
 2. **Bad metadata degrades to human review, never to a guess** — a perfect
    title with an unconfirmable author is `ambiguous`, not `matched`.
 
-## Try it
+## Quick start
 
 ```
-cargo run --release -- /path/to/calibre/library --limit 25 [--verbose] [--lang en]
+narratarr --init          # writes a commented narratarr.toml
+$EDITOR narratarr.toml    # point it at Audiobookshelf and Listenarr
+narratarr                 # runs a dry-run cycle and writes the review report
 ```
 
-Reads Calibre `.opf` sidecars, searches Audible's public catalog, and prints a
-verdict per book: `OK` (auto-match), `??` (review), `--` (refused).
+narratarr starts in **dry-run** and only reports what it would do; flip
+`apply = true` once the output looks right. Config is discovered at
+`/config/narratarr.toml` (Docker) or `./narratarr.toml`; every setting can
+also be overridden by a CLI flag. Verdicts per book: `OK` (auto-match),
+`??` (review report), `--` (refused).
+
+Accept or reject review-lane books by copying the paste-ready lines from the
+report into your overrides file:
+
+```
+brandon sanderson|mistborn: secret history = B01DPMS8JC   # accept this ASIN
+bart farkas|starcraft prima s official strategy guide = skip
+```
+
+Without Audiobookshelf, point it at a directory of Calibre `.opf` sidecars
+instead: `narratarr /path/to/library`.
 
 ## Roadmap
 
@@ -52,7 +68,8 @@ verdict per book: `OK` (auto-match), `??` (review), `--` (refused).
 - [x] SQLite decision store with retry backoff
 - [x] Audiobookshelf (source) and Listenarr (target) API clients
 - [x] The reconcile loop: `--interval`, review report, human overrides file
-- [ ] Config file, structured logging, `--dry-run`-by-default polish
+- [x] narratarr.toml config (arr-style: `--init`, /config discovery, dry-run default)
+- [ ] Structured logging + graceful per-cycle error handling
 - [ ] Docker image + compose snippet
 
 `reference-python/` holds the original Python prototype the Rust
