@@ -307,8 +307,9 @@ async function showReview() {
     main.append(el('div', 'empty', 'nothing to review — narratarr is all caught up'));
     return;
   }
-  main.append(el('div', 'kbd')).innerHTML =
-    '<b>j</b>/<b>k</b> move · <b>a</b> accept · <b>x</b> reject · <b>enter</b> alternatives';
+  const kbd = el('div', 'kbd');
+  kbd.innerHTML = '<b>j</b>/<b>k</b> move · <b>a</b> accept · <b>x</b> reject · <b>enter</b> alternatives';
+  main.append(kbd);
   for (const item of d.items) {
     const c = reviewCard(item);
     cards.push(c);
@@ -323,9 +324,11 @@ async function showNotFound() {
     main.append(el('div', 'empty', 'every book has an audiobook or a decision — nothing pending'));
     return;
   }
-  main.append(el('div', 'kbd')).innerHTML =
+  const intro = el('div', 'kbd');
+  intro.innerHTML =
     'No audiobook edition was found for these. Each retries automatically; ' +
     '<b>retry now</b> queues an immediate re-search, or paste an <b>ASIN</b> if you know the right one.';
+  main.append(intro);
   for (const item of d.items) {
     const row = el('div', 'hrow');
     const meta = el('div', 'hmeta');
