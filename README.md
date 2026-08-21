@@ -49,9 +49,10 @@ verdict per book: `OK` (auto-match), `??` (review), `--` (refused).
 ## Roadmap
 
 - [x] Matching engine + regression corpus
-- [ ] SQLite decision store with retry backoff
-- [ ] Audiobookshelf (source) and Listenarr (target) API clients
-- [ ] The reconcile loop, with check-then-act idempotency
+- [x] SQLite decision store with retry backoff
+- [x] Audiobookshelf (source) and Listenarr (target) API clients
+- [x] The reconcile loop: `--interval`, review report, human overrides file
+- [ ] Config file, structured logging, `--dry-run`-by-default polish
 - [ ] Docker image + compose snippet
 
 `reference-python/` holds the original Python prototype the Rust

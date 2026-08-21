@@ -53,6 +53,7 @@ pub struct Decision {
     pub attempts: i64,
     pub next_retry: Option<i64>, // epoch seconds; None = never retry automatically
     pub updated_at: i64,         // epoch seconds
+    pub note: Option<String>,    // human context, e.g. the best candidate's title
 }
 
 /// Stable identity for an ebook across cycles: normalized author + title.
@@ -85,16 +86,19 @@ impl Store {
                  confidence  REAL,
                  attempts    INTEGER NOT NULL DEFAULT 0,
                  next_retry  INTEGER,
-                 updated_at  INTEGER NOT NULL
+                 updated_at  INTEGER NOT NULL,
+                 note        TEXT
              );",
         )?;
+        // migration for stores created before the note column existed
+        let _ = conn.execute("ALTER TABLE decisions ADD COLUMN note TEXT", []);
         Ok(Self { conn })
     }
 
     pub fn get(&self, key: &str) -> rusqlite::Result<Option<Decision>> {
         self.conn
             .query_row(
-                "SELECT ebook_key, status, asin, confidence, attempts, next_retry, updated_at
+                "SELECT ebook_key, status, asin, confidence, attempts, next_retry, updated_at, note
                  FROM decisions WHERE ebook_key = ?1",
                 params![key],
                 row_to_decision,
@@ -109,15 +113,16 @@ impl Store {
     /// Insert or replace the decision for this ebook (last write wins).
     pub fn record(&self, d: &Decision) -> rusqlite::Result<()> {
         self.conn.execute(
-            "INSERT INTO decisions (ebook_key, status, asin, confidence, attempts, next_retry, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO decisions (ebook_key, status, asin, confidence, attempts, next_retry, updated_at, note)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(ebook_key) DO UPDATE SET
                  status = excluded.status,
                  asin = excluded.asin,
                  confidence = excluded.confidence,
                  attempts = excluded.attempts,
                  next_retry = excluded.next_retry,
-                 updated_at = excluded.updated_at",
+                 updated_at = excluded.updated_at,
+                 note = excluded.note",
             params![
                 d.ebook_key,
                 d.status.as_str(),
@@ -125,7 +130,8 @@ impl Store {
                 d.confidence,
                 d.attempts,
                 d.next_retry,
-                d.updated_at
+                d.updated_at,
+                d.note
             ],
         )?;
         Ok(())
@@ -133,7 +139,7 @@ impl Store {
 
     pub fn all(&self) -> rusqlite::Result<Vec<Decision>> {
         let mut stmt = self.conn.prepare(
-            "SELECT ebook_key, status, asin, confidence, attempts, next_retry, updated_at
+            "SELECT ebook_key, status, asin, confidence, attempts, next_retry, updated_at, note
              FROM decisions ORDER BY ebook_key",
         )?;
         let rows = stmt.query_map([], row_to_decision)?;
@@ -151,6 +157,7 @@ fn row_to_decision(row: &rusqlite::Row<'_>) -> rusqlite::Result<Decision> {
         attempts: row.get(4)?,
         next_retry: row.get(5)?,
         updated_at: row.get(6)?,
+        note: row.get(7)?,
     })
 }
 

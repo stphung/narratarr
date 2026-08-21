@@ -19,6 +19,7 @@ fn decision(key: &str, status: DecisionStatus, next_retry: Option<i64>) -> Decis
         attempts: 1,
         next_retry,
         updated_at: now_epoch(),
+        note: None,
     }
 }
 

@@ -8,4 +8,5 @@ pub mod audible;
 pub mod listenarr;
 pub mod matcher;
 pub mod opf;
+pub mod reconcile;
 pub mod store;
