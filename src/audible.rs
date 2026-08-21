@@ -11,19 +11,34 @@ pub fn search(
     title: &str,
     author: Option<&str>,
 ) -> Result<Vec<Candidate>, Box<dyn std::error::Error>> {
-    let mut req = ureq::get(API)
-        .query("title", title)
-        .query("num_results", "20")
-        .query("response_groups", GROUPS)
-        .query("products_sort_by", "Relevance")
-        .set("User-Agent", "narratarr/0.1");
-    if let Some(a) = author {
-        req = req.query("author", a);
-    }
-    let payload: Value = req
-        .timeout(std::time::Duration::from_secs(20))
-        .call()?
-        .into_json()?;
+    let build = || {
+        let mut req = ureq::get(API)
+            .query("title", title)
+            .query("num_results", "20")
+            .query("response_groups", GROUPS)
+            .query("products_sort_by", "Relevance")
+            .set("User-Agent", "narratarr/0.1");
+        if let Some(a) = author {
+            req = req.query("author", a);
+        }
+        req.timeout(std::time::Duration::from_secs(20))
+    };
+
+    // Transport errors (DNS blips, flaky container NAT, dropped connects) are
+    // common on real deployments and usually clear within seconds; retry with
+    // backoff. HTTP status errors are answers, not blips — no retry.
+    let mut attempt = 0u64;
+    let resp = loop {
+        match build().call() {
+            Ok(r) => break r,
+            Err(ureq::Error::Transport(_)) if attempt < 3 => {
+                attempt += 1;
+                std::thread::sleep(std::time::Duration::from_secs(2 * attempt));
+            }
+            Err(e) => return Err(Box::new(e)),
+        }
+    };
+    let payload: Value = resp.into_json()?;
 
     let products = payload["products"].as_array().cloned().unwrap_or_default();
     Ok(products.iter().map(to_candidate).collect())
