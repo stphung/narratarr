@@ -1,0 +1,16 @@
+[package]
+name = "shelfspoken"
+version = "0.1.0"
+edition = "2021"
+description = "Your shelf, spoken: mirrors an ebook library into a monitored audiobook collection"
+license = "MIT"
+
+[dependencies]
+difflib = "0.4"
+regex = "1"
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+
+[profile.release]
+strip = true
+lto = true
