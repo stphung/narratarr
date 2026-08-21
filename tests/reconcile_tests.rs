@@ -34,6 +34,8 @@ fn report_contains_paste_ready_override_lines() {
         next_retry: None,
         updated_at: 0,
         note: Some("Carl's Doomsday Scenario".into()),
+        ebook_title: None,
+        ebook_author: None,
     };
     let md = render_report(&[d], 0);
     assert!(md.contains("Needs review"));

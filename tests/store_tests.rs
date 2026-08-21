@@ -20,6 +20,8 @@ fn decision(key: &str, status: DecisionStatus, next_retry: Option<i64>) -> Decis
         next_retry,
         updated_at: now_epoch(),
         note: None,
+        ebook_title: None,
+        ebook_author: None,
     }
 }
 

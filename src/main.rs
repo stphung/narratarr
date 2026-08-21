@@ -85,6 +85,8 @@ fn apply_overrides(
                         next_retry: None,
                         updated_at: now,
                         note: Some("manual override: skip".into()),
+                        ebook_title: prior.as_ref().and_then(|d| d.ebook_title.clone()),
+                        ebook_author: prior.as_ref().and_then(|d| d.ebook_author.clone()),
                     };
                     if store.record(&d).is_ok() {
                         println!("override: {key} = skip");
@@ -105,6 +107,8 @@ fn apply_overrides(
                         next_retry: None,
                         updated_at: now,
                         note: Some("manual override".into()),
+                        ebook_title: prior.as_ref().and_then(|d| d.ebook_title.clone()),
+                        ebook_author: prior.as_ref().and_then(|d| d.ebook_author.clone()),
                     };
                     if store.record(&d).is_ok() {
                         println!("override: {key} = {asin}");
@@ -294,6 +298,20 @@ fn main() -> std::process::ExitCode {
     if larr.is_some() && !apply {
         println!("listenarr sync in DRY-RUN mode (pass --apply to make changes)\n");
     }
+    if let Some(web) = &cfg.web {
+        if web.enabled {
+            match &state_path {
+                Some(sp) => {
+                    let (port, sp) = (web.port, sp.clone());
+                    std::thread::spawn(move || narratarr::web::serve(port, sp));
+                }
+                None => {
+                    eprintln!("!! [web] requires general.state_file; UI disabled");
+                }
+            }
+        }
+    }
+
     let interval_secs = match &interval {
         Some(v) => match reconcile::parse_interval(v) {
             Some(secs) => Some(secs),
@@ -476,6 +494,8 @@ fn main() -> std::process::ExitCode {
                     next_retry,
                     updated_at: now,
                     note: result.best.as_ref().map(|b| b.title.clone()),
+                    ebook_title: Some(ebook.title.clone()),
+                    ebook_author: Some(ebook.author.clone()),
                 };
                 if let Err(e) = s.record(&decision) {
                     eprintln!("!! failed to record decision for {key}: {e}");

@@ -30,6 +30,7 @@ pub struct Candidate {
     pub format_type: Option<String>,
     pub language: Option<String>,
     pub runtime_min: Option<i64>,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -5,7 +5,7 @@ use crate::matcher::Candidate;
 use serde_json::Value;
 
 const API: &str = "https://api.audible.com/1.0/catalog/products";
-const GROUPS: &str = "contributors,product_attrs,product_desc,series";
+const GROUPS: &str = "contributors,product_attrs,product_desc,series,media";
 
 pub fn search(
     title: &str,
@@ -64,5 +64,9 @@ fn to_candidate(p: &Value) -> Candidate {
         format_type: p["format_type"].as_str().map(str::to_string),
         language: p["language"].as_str().map(str::to_string),
         runtime_min: p["runtime_length_min"].as_i64(),
+        image_url: p["product_images"]["500"]
+            .as_str()
+            .or_else(|| p["product_images"]["256"].as_str())
+            .map(str::to_string),
     }
 }

@@ -102,16 +102,31 @@ OK  Project Hail Mary        | Andy Weir     -> Project Hail Mary [B08G9PRS1K] t
 into Listenarr as monitored; Listenarr takes it from there; finished
 audiobooks land back in Audiobookshelf.
 
-**6. Answer the review report** (optional, whenever you like): copy lines
-from `review.md` into `overrides.txt`:
+**6. Review the ambiguous matches** — enable the web UI:
+
+```toml
+[web]
+enabled = true
+port = 4546
+```
+
+…map the port (`- 4546:4546`) and open `http://<host>:4546`: every book
+narratarr wasn't sure about, as a card with its best candidate. **Accept
+best**, browse **alternatives** (live-searched, with cover art, narrators and
+runtimes — click the right edition to accept it), or **no audiobook wanted**.
+Accepted books sync to Listenarr on the next cycle. The UI is LAN-facing and
+unauthenticated — don't expose it to the internet.
+
+Prefer files? The same queue is written to `review.md` every cycle with
+paste-ready lines for `overrides.txt`:
 
 ```
 jeff grubb|the last guardian = 1945683260     # yes, that's the right book
 bart farkas|starcraft prima s official strategy guide = skip
 ```
 
-That's the whole workflow: logs you can read, one file to answer, nothing
-else to operate.
+That's the whole workflow: logs you can read, one screen (or one file) to
+answer, nothing else to operate.
 
 ## Without Audiobookshelf
 
@@ -134,6 +149,8 @@ or run the binary against a path: `narratarr /path/to/library`.
 | `general.books_dir` | *(unset)* | Calibre-directory source (used when `[audiobookshelf]` is absent). |
 | `audiobookshelf.*` | — | `url`, `token`, `library`. |
 | `listenarr.*` | — | `url`, `api_key`. |
+| `web.enabled` | `false` | The review web UI. |
+| `web.port` | `4546` | Review UI port. |
 
 Every setting has a CLI-flag override (`--interval`, `--apply`, `--limit`,
 `--state`, `--report`, `--overrides`, `--abs`, `--abs-token`, `--abs-library`,

@@ -52,6 +52,12 @@ library = "Books"
 [listenarr]
 url = "http://listenarr:4545"
 api_key = "CHANGEME"
+
+# The review web UI: accept or reject ambiguous matches with cover art.
+# LAN-facing and unauthenticated; do not expose it to the internet.
+[web]
+enabled = true
+port = 4546
 "#;
 
 #[derive(Debug, Deserialize, Default)]
@@ -60,6 +66,7 @@ pub struct Config {
     pub general: General,
     pub audiobookshelf: Option<Audiobookshelf>,
     pub listenarr: Option<Listenarr>,
+    pub web: Option<Web>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,6 +112,22 @@ pub struct Audiobookshelf {
 pub struct Listenarr {
     pub url: String,
     pub api_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Web {
+    pub enabled: bool,
+    pub port: u16,
+}
+
+impl Default for Web {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: 4546,
+        }
+    }
 }
 
 pub fn load(path: &Path) -> Result<Config, String> {
