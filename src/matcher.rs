@@ -85,7 +85,10 @@ fn junk_re() -> &'static Regex {
 // are legitimate editions.)
 fn dramatized_re() -> &'static Regex {
     static C: OnceLock<Regex> = OnceLock::new();
-    re(&C, r"(?i)\b(dramati[sz]ed|dramati[sz]ation|graphic\s*audio|audio\s+drama)\b")
+    re(
+        &C,
+        r"(?i)\b(dramati[sz]ed|dramati[sz]ation|graphic\s*audio|audio\s+drama)\b",
+    )
 }
 
 // "Cline, Ernest - Armada" — an author name embedded at the front of the title.
@@ -214,7 +217,11 @@ pub fn preclean_title(raw: &str) -> String {
 
 /// First author of a possibly semicolon-separated list: "A;B;C" -> "A".
 pub fn primary_author(raw: &str) -> String {
-    raw.split(';').map(str::trim).find(|s| !s.is_empty()).unwrap_or("").to_string()
+    raw.split(';')
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_string()
 }
 
 /// "Bryson, Bill" -> "bill bryson"; strips credentials and bracket/site junk.
@@ -223,7 +230,11 @@ pub fn normalize_author(raw: &str) -> String {
     let a = author_noise_re().replace_all(&raw, " ");
     let a = a.trim().trim_matches('&').trim().to_string();
     let a = {
-        let parts: Vec<&str> = a.split(',').map(str::trim).filter(|p| !p.is_empty()).collect();
+        let parts: Vec<&str> = a
+            .split(',')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .collect();
         if parts.len() == 2 && !parts[0].contains(' ') {
             format!("{} {}", parts[1], parts[0]) // "Last, First" -> "First Last"
         } else {
@@ -296,13 +307,22 @@ pub fn author_score(ebook_author: &str, cand_authors: &[String]) -> f64 {
     best
 }
 
-const STOPWORDS: &[&str] = &["the", "a", "an", "of", "and", "in", "on", "at", "to", "for", "with", "s"];
+const STOPWORDS: &[&str] = &[
+    "the", "a", "an", "of", "and", "in", "on", "at", "to", "for", "with", "s",
+];
 
 // Words that describe an EDITION rather than identify a work. A candidate
 // differing only by these is the same book repackaged, not a different book.
 const EDITION_WORDS: &[&str] = &[
-    "edition", "revised", "updated", "expanded", "anniversary", "complete",
-    "unabridged", "new", "special",
+    "edition",
+    "revised",
+    "updated",
+    "expanded",
+    "anniversary",
+    "complete",
+    "unabridged",
+    "new",
+    "special",
 ];
 
 fn is_ordinal(w: &str) -> bool {
@@ -314,7 +334,9 @@ fn is_ordinal(w: &str) -> bool {
 fn content_words(s: &str) -> std::collections::HashSet<String> {
     s.split_whitespace()
         .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
-        .filter(|w| !w.is_empty() && !STOPWORDS.contains(w) && !EDITION_WORDS.contains(w) && !is_ordinal(w))
+        .filter(|w| {
+            !w.is_empty() && !STOPWORDS.contains(w) && !EDITION_WORDS.contains(w) && !is_ordinal(w)
+        })
         .map(str::to_string)
         .collect()
 }
@@ -358,7 +380,12 @@ pub fn score_candidate(ebook: &Ebook, cand: &Candidate) -> Scored {
     if extra_penalty {
         penalties.push("title-extra-words");
     }
-    match cand.format_type.as_deref().map(str::to_lowercase).as_deref() {
+    match cand
+        .format_type
+        .as_deref()
+        .map(str::to_lowercase)
+        .as_deref()
+    {
         Some("abridged") => {
             total -= 0.15;
             penalties.push("abridged");
@@ -398,8 +425,15 @@ pub fn score_candidate(ebook: &Ebook, cand: &Candidate) -> Scored {
 
 /// Classify an ebook against its candidate list.
 pub fn match_ebook(ebook: &Ebook, candidates: &[Candidate]) -> MatchResult {
-    let mut scored: Vec<Scored> = candidates.iter().map(|c| score_candidate(ebook, c)).collect();
-    scored.sort_by(|x, y| y.total.partial_cmp(&x.total).unwrap_or(std::cmp::Ordering::Equal));
+    let mut scored: Vec<Scored> = candidates
+        .iter()
+        .map(|c| score_candidate(ebook, c))
+        .collect();
+    scored.sort_by(|x, y| {
+        y.total
+            .partial_cmp(&x.total)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let best = scored
         .iter()
@@ -415,5 +449,9 @@ pub fn match_ebook(ebook: &Ebook, candidates: &[Candidate]) -> MatchResult {
         Some(_) => Status::NotFound,
     };
 
-    MatchResult { status, best, scored }
+    MatchResult {
+        status,
+        best,
+        scored,
+    }
 }

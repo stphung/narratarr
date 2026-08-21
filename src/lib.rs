@@ -6,3 +6,4 @@
 pub mod audible;
 pub mod matcher;
 pub mod opf;
+pub mod store;

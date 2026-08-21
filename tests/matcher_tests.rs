@@ -5,7 +5,11 @@
 use narratarr::matcher::*;
 
 fn ebook(title: &str, author: &str) -> Ebook {
-    Ebook { title: title.into(), author: author.into(), language: Some("en".into()) }
+    Ebook {
+        title: title.into(),
+        author: author.into(),
+        language: Some("en".into()),
+    }
 }
 
 fn cand(title: &str, subtitle: Option<&str>, authors: &[&str]) -> Candidate {
@@ -24,15 +28,27 @@ fn cand(title: &str, subtitle: Option<&str>, authors: &[&str]) -> Candidate {
 
 #[test]
 fn title_filename_artifacts() {
-    assert_eq!(normalize_title("Alloy of Law_ A Mistborn Novel, The"), "alloy of law: a mistborn novel");
-    assert_eq!(base_title(&normalize_title("Alloy of Law_ A Mistborn Novel, The")), "alloy of law");
-    assert_eq!(normalize_title("a Short History Of Nearly Everything (2010)"), "a short history of nearly everything");
+    assert_eq!(
+        normalize_title("Alloy of Law_ A Mistborn Novel, The"),
+        "alloy of law: a mistborn novel"
+    );
+    assert_eq!(
+        base_title(&normalize_title("Alloy of Law_ A Mistborn Novel, The")),
+        "alloy of law"
+    );
+    assert_eq!(
+        normalize_title("a Short History Of Nearly Everything (2010)"),
+        "a short history of nearly everything"
+    );
 }
 
 #[test]
 fn author_reversed_and_junk() {
     assert_eq!(normalize_author("Bryson, Bill"), "bill bryson");
-    assert_eq!(normalize_author("Skiena, Steven S. [Skiena, Steven S.] & chenjin5.com"), "steven s skiena");
+    assert_eq!(
+        normalize_author("Skiena, Steven S. [Skiena, Steven S.] & chenjin5.com"),
+        "steven s skiena"
+    );
     assert_eq!(normalize_author("Forsgren PhD"), "forsgren");
 }
 
@@ -40,8 +56,14 @@ fn author_reversed_and_junk() {
 fn query_title_keeps_punctuation_strips_tags() {
     // normalize for comparison, never for queries: the apostrophe bug
     assert_eq!(query_title("Abaddon's Gate"), "Abaddon's Gate");
-    assert_eq!(query_title("Beyond the Dark Portal (wow-4)"), "Beyond the Dark Portal");
-    assert_eq!(query_title("Alloy of Law_ A Mistborn Novel, The"), "Alloy of Law");
+    assert_eq!(
+        query_title("Beyond the Dark Portal (wow-4)"),
+        "Beyond the Dark Portal"
+    );
+    assert_eq!(
+        query_title("Alloy of Law_ A Mistborn Novel, The"),
+        "Alloy of Law"
+    );
 }
 
 // ── classification verdicts ─────────────────────────────────────────────
@@ -142,15 +164,25 @@ fn abridged_is_outranked_by_unabridged() {
 fn dramatized_adaptation_is_not_auto_matched() {
     // the one false positive of the full sweep: Gatsby (Dramatized) at 0.855
     let r = match_ebook(
-        &ebook("The Great Gatsby (\"Global Classics\")", "F. Scott Fitzgerald"),
-        &[cand("The Great Gatsby (Dramatized)", None, &["F. Scott Fitzgerald"])],
+        &ebook(
+            "The Great Gatsby (\"Global Classics\")",
+            "F. Scott Fitzgerald",
+        ),
+        &[cand(
+            "The Great Gatsby (Dramatized)",
+            None,
+            &["F. Scott Fitzgerald"],
+        )],
     );
     assert_ne!(r.status, Status::Matched);
 }
 
 #[test]
 fn semicolon_author_lists_use_first_author() {
-    assert_eq!(normalize_author("Horstman, Mark;Braun, Michael"), "mark horstman");
+    assert_eq!(
+        normalize_author("Horstman, Mark;Braun, Michael"),
+        "mark horstman"
+    );
     assert_eq!(normalize_author("Max Brooks;"), "max brooks");
     let r = match_ebook(
         &ebook("The Effective Manager", "Horstman, Mark;Braun, Michael"),
@@ -161,7 +193,10 @@ fn semicolon_author_lists_use_first_author() {
 
 #[test]
 fn preclean_strips_filename_junk_from_titles() {
-    assert_eq!(preclean_title("Cline, Ernest - Armada: A Novel"), "Armada: A Novel");
+    assert_eq!(
+        preclean_title("Cline, Ernest - Armada: A Novel"),
+        "Armada: A Novel"
+    );
     assert_eq!(
         preclean_title("Sanderson, Brandon - Mistborn 06 - The Bands of Mourning"),
         "The Bands of Mourning"
@@ -183,7 +218,11 @@ fn adjacent_title_same_author_is_not_auto_matched() {
     // similarity alone scores it deceptively well
     let r = match_ebook(
         &ebook("The Effective Manager", "Horstman, Mark;Braun, Kate"),
-        &[cand("The Effective Hiring Manager", None, &["Mark Horstman"])],
+        &[cand(
+            "The Effective Hiring Manager",
+            None,
+            &["Mark Horstman"],
+        )],
     );
     assert_ne!(r.status, Status::Matched);
     assert!(r.best.unwrap().penalties.contains(&"title-extra-words"));
@@ -208,13 +247,27 @@ fn extra_words_rule_spares_subtitle_only_differences() {
 fn edition_suffix_words_do_not_block_auto_match() {
     // "15th Anniversary Edition" is the same book repackaged, not a different work
     let r = match_ebook(
-        &ebook("Start with Why: How Great Leaders Inspire Everyone to Take Action", "Simon Sinek"),
-        &[cand("Start with Why 15th Anniversary Edition", None, &["Simon Sinek"])],
+        &ebook(
+            "Start with Why: How Great Leaders Inspire Everyone to Take Action",
+            "Simon Sinek",
+        ),
+        &[cand(
+            "Start with Why 15th Anniversary Edition",
+            None,
+            &["Simon Sinek"],
+        )],
     );
     assert_eq!(r.status, Status::Matched);
     let r = match_ebook(
-        &ebook("Multipliers: How the Best Leaders Make Everyone Smarter", "Liz Wiseman"),
-        &[cand("Multipliers, Revised and Updated", Some("How the Best Leaders Make Everyone Smarter"), &["Liz Wiseman"])],
+        &ebook(
+            "Multipliers: How the Best Leaders Make Everyone Smarter",
+            "Liz Wiseman",
+        ),
+        &[cand(
+            "Multipliers, Revised and Updated",
+            Some("How the Best Leaders Make Everyone Smarter"),
+            &["Liz Wiseman"],
+        )],
     );
     assert_eq!(r.status, Status::Matched);
 }

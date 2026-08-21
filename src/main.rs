@@ -5,6 +5,7 @@
 use narratarr::audible;
 use narratarr::matcher::{match_ebook, query_title, Status};
 use narratarr::opf;
+use narratarr::store::{self, Decision, DecisionStatus, Store, NOT_FOUND_RETRY_SECS};
 use std::path::PathBuf;
 
 fn main() -> std::process::ExitCode {
@@ -13,17 +14,31 @@ fn main() -> std::process::ExitCode {
     let mut limit = 10usize;
     let mut verbose = false;
     let mut lang = String::from("en");
+    let mut state_path: Option<PathBuf> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--limit" => limit = args.next().and_then(|v| v.parse().ok()).unwrap_or(10),
             "--verbose" => verbose = true,
             "--lang" => lang = args.next().unwrap_or_else(|| "en".into()),
+            "--state" => state_path = args.next().map(PathBuf::from),
             _ => books_dir = Some(PathBuf::from(a)),
         }
     }
     let Some(dir) = books_dir else {
-        eprintln!("usage: narratarr <books_dir> [--limit N] [--verbose]");
+        eprintln!(
+            "usage: narratarr <books_dir> [--limit N] [--verbose] [--lang en] [--state file.db]"
+        );
         return std::process::ExitCode::FAILURE;
+    };
+    let state = match &state_path {
+        Some(p) => match Store::open(p) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                eprintln!("cannot open state db {}: {e}", p.display());
+                return std::process::ExitCode::FAILURE;
+            }
+        },
+        None => None,
     };
 
     let mut opfs: Vec<PathBuf> = match std::fs::read_dir(&dir) {
@@ -41,10 +56,14 @@ fn main() -> std::process::ExitCode {
     opfs.truncate(limit);
 
     let (mut matched, mut ambiguous, mut not_found, mut errors) = (0, 0, 0, 0);
+    let mut skipped = 0;
     for opf_path in &opfs {
         let Some(mut ebook) = opf::read_opf(opf_path) else {
             errors += 1;
-            println!("?? unreadable opf: {}", opf_path.file_name().unwrap_or_default().to_string_lossy());
+            println!(
+                "?? unreadable opf: {}",
+                opf_path.file_name().unwrap_or_default().to_string_lossy()
+            );
             continue;
         };
 
@@ -52,9 +71,23 @@ fn main() -> std::process::ExitCode {
         // by scraper-sourced epubs); the user's preferred language is config.
         ebook.language = Some(lang.clone());
 
+        // Idempotency: a prior decision means this book needs no work now.
+        let key = store::ebook_key(&ebook.title, &ebook.author);
+        if let Some(s) = &state {
+            let prior = s.get(&key).unwrap_or(None);
+            if !store::is_actionable(prior.as_ref(), store::now_epoch()) {
+                skipped += 1;
+                continue;
+            }
+        }
+
         let q = query_title(&ebook.title);
         let primary = narratarr::matcher::primary_author(&ebook.author);
-        let author = if primary.is_empty() { None } else { Some(primary.as_str()) };
+        let author = if primary.is_empty() {
+            None
+        } else {
+            Some(primary.as_str())
+        };
         let candidates = match audible::search(&q, author) {
             // bad author metadata is common; retry on title alone and let the
             // scorer decide (a wrong author can then never auto-match)
@@ -86,6 +119,28 @@ fn main() -> std::process::ExitCode {
             }
         };
 
+        if let Some(s) = &state {
+            let now = store::now_epoch();
+            let (status, next_retry) = match result.status {
+                Status::Matched => (DecisionStatus::Matched, None),
+                Status::Ambiguous => (DecisionStatus::Ambiguous, None),
+                Status::NotFound => (DecisionStatus::NotFound, Some(now + NOT_FOUND_RETRY_SECS)),
+            };
+            let prior_attempts = s.get(&key).unwrap_or(None).map(|d| d.attempts).unwrap_or(0);
+            let decision = Decision {
+                ebook_key: key.clone(),
+                status,
+                asin: result.best.as_ref().and_then(|b| b.asin.clone()),
+                confidence: result.best.as_ref().map(|b| b.total),
+                attempts: prior_attempts + 1,
+                next_retry,
+                updated_at: now,
+            };
+            if let Err(e) = s.record(&decision) {
+                eprintln!("!! failed to record decision for {key}: {e}");
+            }
+        }
+
         let mut line = format!(
             "{icon}  {:<48} | {:<22}",
             truncate(&ebook.title, 48),
@@ -107,13 +162,19 @@ fn main() -> std::process::ExitCode {
         println!("{line}");
         if verbose {
             for s in result.scored.iter().skip(1).take(3) {
-                println!("      runner-up: {:<52} total={:.3}", truncate(&s.title, 52), s.total);
+                println!(
+                    "      runner-up: {:<52} total={:.3}",
+                    truncate(&s.title, 52),
+                    s.total
+                );
             }
         }
         std::thread::sleep(std::time::Duration::from_secs(1)); // be polite
     }
 
-    println!("\n{matched} matched / {ambiguous} ambiguous / {not_found} not found / {errors} errors");
+    println!(
+        "\n{matched} matched / {ambiguous} ambiguous / {not_found} not found / {errors} errors / {skipped} skipped (prior decision)"
+    );
     std::process::ExitCode::SUCCESS
 }
 

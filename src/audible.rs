@@ -7,7 +7,10 @@ use serde_json::Value;
 const API: &str = "https://api.audible.com/1.0/catalog/products";
 const GROUPS: &str = "contributors,product_attrs,product_desc,series";
 
-pub fn search(title: &str, author: Option<&str>) -> Result<Vec<Candidate>, Box<dyn std::error::Error>> {
+pub fn search(
+    title: &str,
+    author: Option<&str>,
+) -> Result<Vec<Candidate>, Box<dyn std::error::Error>> {
     let mut req = ureq::get(API)
         .query("title", title)
         .query("num_results", "20")
@@ -17,7 +20,10 @@ pub fn search(title: &str, author: Option<&str>) -> Result<Vec<Candidate>, Box<d
     if let Some(a) = author {
         req = req.query("author", a);
     }
-    let payload: Value = req.timeout(std::time::Duration::from_secs(20)).call()?.into_json()?;
+    let payload: Value = req
+        .timeout(std::time::Duration::from_secs(20))
+        .call()?
+        .into_json()?;
 
     let products = payload["products"].as_array().cloned().unwrap_or_default();
     Ok(products.iter().map(to_candidate).collect())
