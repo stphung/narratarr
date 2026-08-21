@@ -1,68 +1,62 @@
 # narratarr
 
-**The narrator for your bookshelf.** narratarr mirrors an ebook library into a monitored
-audiobook collection: it reads the books you already own, finds each one's
-audiobook edition, and (eventually) hands the wanted list to an audiobook
-automation stack — so your library builds its own audio twin with no input
-from you.
+**The narrator for your bookshelf.**
 
-Status: **early development.** The matching engine — the make-or-break piece —
-is built and validated against a real 236-book Calibre library:
+narratarr watches the ebooks you already own and quietly builds the audiobook
+collection to match — no requests, no lists to maintain, no input at all. Add
+an ebook to your library; some time later, the audiobook is just *there*.
 
-- **157 auto-matched** with exact Audible ASINs and zero known false positives
-- **14 parked for human review** (franchise-prefixed titles, brand-named
-  editions, suspiciously-adjacent titles by the same author)
-- **65 correctly refused** (no audiobook exists, or the ebook metadata is
-  garbage)
+It's a bridge in the [*arr ecosystem](https://github.com/Ravencentric/awesome-arr),
+in the same spirit as [soularr](https://github.com/mrusse/soularr): it doesn't
+search indexers or download anything itself. It sits between two apps that
+already do their jobs well:
 
-## Design
-
-A level-based reconciler, not an event pipeline: each cycle recomputes desired
-state from the ebook library, diffs it against the audiobook manager, and
-converges. One SQLite table of match *decisions* is the only owned state —
-every other fact is queried live from the system that owns it.
-
-The matcher is a pure function (`src/matcher.rs`), hardened against
-real-world library filth: reversed `Last, First` authors, semicolon author
-lists, credentials and site-spam in author fields, author names embedded in
-title fields, `(2010)` year tags, `_`-for-`:` filename substitutions, lying
-language metadata, "Summary of…" derivative ebooks, dramatized adaptations,
-abridged editions, and edition-suffix noise ("15th Anniversary Edition").
-Every lesson is pinned in `tests/matcher_tests.rs`.
-
-Two rules learned the hard way:
-
-1. **Normalize for comparison, never for queries** — search engines want
-   `Abaddon's Gate`, not `abaddon s gate`.
-2. **Bad metadata degrades to human review, never to a guess** — a perfect
-   title with an unconfirmable author is `ambiguous`, not `matched`.
-
-## Quick start
+- **[Audiobookshelf](https://github.com/advplyr/audiobookshelf)** — your book
+  server, and narratarr's *source of truth* for "what books do I have"
+- **[Listenarr](https://github.com/Listenarrs/Listenarr)** — the audiobook
+  manager (Sonarr-for-audiobooks) that searches your indexers, grabs releases
+  through your download clients, and imports the files
 
 ```
-narratarr --init          # writes a commented narratarr.toml
-$EDITOR narratarr.toml    # point it at Audiobookshelf and Listenarr
-narratarr                 # runs a dry-run cycle and writes the review report
+ebooks in Audiobookshelf ──▶ narratarr ──▶ Listenarr ──▶ indexers + download client
+        ▲                   (matching)    (monitored)             │
+        └────────────────── audiobooks imported back ◀────────────┘
 ```
 
-narratarr starts in **dry-run** and only reports what it would do; flip
-`apply = true` once the output looks right. Config is discovered at
-`/config/narratarr.toml` (Docker) or `./narratarr.toml`; every setting can
-also be overridden by a CLI flag. Verdicts per book: `OK` (auto-match),
-`??` (review report), `--` (refused).
+## How it works
 
-Accept or reject review-lane books by copying the paste-ready lines from the
-report into your overrides file:
+Every cycle, narratarr lists your ebook library, matches each book against
+Audible's catalog, and sorts the results into three lanes:
 
-```
-brandon sanderson|mistborn: secret history = B01DPMS8JC   # accept this ASIN
-bart farkas|starcraft prima s official strategy guide = skip
-```
+- **Matched** — high-confidence hits (title *and* author confirmed) are added
+  to Listenarr as monitored, automatically.
+- **Review** — plausible-but-unconfirmed candidates (franchise-prefixed
+  titles, missing author metadata, suspiciously similar titles by the same
+  author) go into a markdown **review report** with paste-ready accept/reject
+  lines. You answer in a plain-text **overrides file**; narratarr acts on your
+  answers next cycle.
+- **Refused** — books with no audiobook edition, derivative junk ("Summary
+  of…"), dramatized adaptations, and garbage metadata are skipped, and
+  not-found books are automatically retried a month later.
 
-Without Audiobookshelf, point it at a directory of Calibre `.opf` sidecars
-instead: `narratarr /path/to/library`.
+The matcher is deliberately paranoid — **precision over recall** — because a
+wrong auto-match downloads the wrong audiobook. Against a real 236-book
+library it auto-matched 157, parked 14 for review, refused 65, and made zero
+wrong matches. It survives real-world metadata filth: reversed author names,
+`Author - Title` filename junk, `(2010)` year tags, semicolon author lists,
+abridged editions, and ebooks whose language metadata simply lies.
 
-## Docker
+narratarr is **stateless by design** except for one small SQLite file of match
+decisions — delete it and everything regenerates. It never writes to
+Audiobookshelf, and every action against Listenarr is check-then-act, so
+re-runs are always safe.
+
+## Setup
+
+You'll need Audiobookshelf and Listenarr already running (Listenarr wired to
+your indexers and download client). Then:
+
+**1. Add narratarr to your compose file:**
 
 ```yaml
   narratarr:
@@ -73,21 +67,107 @@ instead: `narratarr /path/to/library`.
     restart: unless-stopped
 ```
 
-The first start writes a commented `narratarr.toml` into the config volume and
-waits; edit it and restart. Use compose service names for the URLs
-(`http://audiobookshelf:80`, `http://listenarr:4545`). The image is ~27 MB and
-runs unprivileged.
+**2. Start it once.** The first run writes a commented `narratarr.toml` into
+the config volume and waits for you.
 
-## Roadmap
+**3. Edit `narratarr/config/narratarr.toml`:**
 
-- [x] Matching engine + regression corpus
-- [x] SQLite decision store with retry backoff
-- [x] Audiobookshelf (source) and Listenarr (target) API clients
-- [x] The reconcile loop: `--interval`, review report, human overrides file
-- [x] narratarr.toml config (arr-style: `--init`, /config discovery, dry-run default)
-- [ ] Structured logging + graceful per-cycle error handling
-- [x] Docker image + compose snippet (GHCR publish on tag)
+```toml
+[general]
+interval = "6h"          # reconcile cadence; comment out to run once
+language = "en"
+apply = false            # dry-run until you're ready
 
-`reference-python/` holds the original Python prototype the Rust
-implementation was ported from; it will be removed once the Rust version
-surpasses it.
+[audiobookshelf]
+url = "http://audiobookshelf:80"     # compose service names, not host names
+token = "..."            # ABS: user icon -> Settings -> Users -> API token
+library = "Books"        # the EBOOK library to mirror
+
+[listenarr]
+url = "http://listenarr:4545"
+api_key = "..."          # Listenarr: Settings -> General -> API key
+```
+
+**4. Restart and read the logs.** In dry-run, narratarr prints a verdict per
+book (`OK` auto-match, `??` review, `--` refused) and what it *would* send to
+Listenarr, and writes `review.md` to the config volume:
+
+```
+OK  Project Hail Mary        | Andy Weir     -> Project Hail Mary [B08G9PRS1K] total=1.000
+??  The Last Guardian        | Jeff Grubb    -> Warcraft: The Last Guardian [1945683260]
+--  The Algorithm Design Manual | Steven Skiena
+```
+
+**5. Flip `apply = true`** when the output looks right. Matched books flow
+into Listenarr as monitored; Listenarr takes it from there; finished
+audiobooks land back in Audiobookshelf.
+
+**6. Answer the review report** (optional, whenever you like): copy lines
+from `review.md` into `overrides.txt`:
+
+```
+jeff grubb|the last guardian = 1945683260     # yes, that's the right book
+bart farkas|starcraft prima s official strategy guide = skip
+```
+
+That's the whole workflow: logs you can read, one file to answer, nothing
+else to operate.
+
+## Without Audiobookshelf
+
+narratarr can also read a directory of Calibre-style `.opf` sidecars directly
+— set `books_dir = "/books"` in `[general]` (and mount it into the container),
+or run the binary against a path: `narratarr /path/to/library`.
+
+## Configuration reference
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `general.interval` | *(unset)* | Reconcile cadence (`90s`, `30m`, `6h`, `1d`). Unset = one cycle, then exit. |
+| `general.language` | `"en"` | Preferred audiobook language. Trusted over ebook metadata, which lies. |
+| `general.apply` | `false` | Dry-run until true. |
+| `general.auto_search` | `false` | Ask Listenarr to search immediately on add. |
+| `general.limit` | `0` | Max books per cycle; `0` = all. |
+| `general.state_file` | *(unset)* | The decisions database. Strongly recommended: `/config/narratarr.db`. |
+| `general.report_file` | *(unset)* | Review report path, rewritten each cycle. |
+| `general.overrides_file` | *(unset)* | Your accept/reject answers. |
+| `general.books_dir` | *(unset)* | Calibre-directory source (used when `[audiobookshelf]` is absent). |
+| `audiobookshelf.*` | — | `url`, `token`, `library`. |
+| `listenarr.*` | — | `url`, `api_key`. |
+
+Every setting has a CLI-flag override (`--interval`, `--apply`, `--limit`,
+`--state`, `--report`, `--overrides`, `--abs`, `--abs-token`, `--abs-library`,
+`--listenarr`, `--listenarr-key`, `--lang`, `--verbose`); flags win over the
+config file. `narratarr --init` writes a starter config to the current
+directory.
+
+## Good to know
+
+- **Nothing happens without `apply = true`** — a fresh install can never
+  surprise you.
+- Unknown config keys are startup errors, not silent no-ops — typos can't
+  quietly disable a setting.
+- If Audiobookshelf or Listenarr is down, the cycle is skipped and retried at
+  the next interval; the daemon doesn't crash-loop.
+- Not-found books are retried monthly — audiobook availability changes, and
+  your indexers' rate limits are respected (one catalog query per second).
+- Known limitations: omnibus ebooks (one file containing a whole series)
+  aren't expanded into per-book audiobooks yet, and badly misspelled ebook
+  metadata can defeat search ("Farenheit 451" is real and undefeated).
+
+## Development
+
+```
+cargo test      # matcher fixtures, store contracts, config contracts
+cargo clippy --all-targets -- -D warnings
+```
+
+The matcher's verdicts against a real library are pinned as tests: if you
+tweak a heuristic and a fixture flips, that's a design decision to discuss,
+not a test to update. Found a bad match in the wild? A failing fixture in
+`tests/matcher_tests.rs` is the perfect bug report — and the perfect PR.
+
+## License
+
+MIT. Not affiliated with Audible or Amazon; narratarr queries Audible's
+public catalog API for metadata only.

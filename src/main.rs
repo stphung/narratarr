@@ -315,63 +315,72 @@ fn main() -> std::process::ExitCode {
         let (mut matched, mut ambiguous, mut not_found, mut errors) = (0, 0, 0, 0);
         let mut skipped = 0;
 
-        let mut ebooks = if let (Some(u), Some(t)) = (&abs_url, &abs_token) {
-            let client = abs::Client::new(u, t);
-            let libs = match client.libraries() {
-                Ok(l) => l,
-                Err(e) => {
-                    eprintln!("cannot list ABS libraries: {e}");
-                    return std::process::ExitCode::FAILURE;
-                }
-            };
-            let lib = abs_library
-                .as_ref()
-                .and_then(|want| libs.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(want)));
-            let Some((lib_id, lib_name, _)) = lib else {
-                eprintln!("--abs-library must name one of the ABS libraries:");
-                for (_, name, mt) in &libs {
-                    eprintln!("  {name} ({mt})");
-                }
-                return std::process::ExitCode::FAILURE;
-            };
-            match client.ebooks(lib_id) {
-                Ok(b) => {
-                    println!("loaded {} items from ABS library {lib_name:?}\n", b.len());
-                    b
-                }
-                Err(e) => {
-                    eprintln!("cannot list items of ABS library {lib_name:?}: {e}");
-                    return std::process::ExitCode::FAILURE;
-                }
-            }
-        } else {
-            let dir = books_dir.clone().expect("checked above");
-            let mut opfs: Vec<PathBuf> = match std::fs::read_dir(&dir) {
-                Ok(rd) => rd
+        // The load phase must not kill the daemon: a source being briefly
+        // unreachable is a normal Tuesday. In interval mode a failed load
+        // aborts the CYCLE and retries next tick; one-shot mode still fails.
+        let load = || -> Result<(Vec<narratarr::matcher::Ebook>, usize), String> {
+            if let (Some(u), Some(t)) = (&abs_url, &abs_token) {
+                let client = abs::Client::new(u, t);
+                let libs = client
+                    .libraries()
+                    .map_err(|e| format!("cannot list ABS libraries: {e}"))?;
+                let lib = abs_library
+                    .as_ref()
+                    .and_then(|want| libs.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(want)));
+                let Some((lib_id, lib_name, _)) = lib else {
+                    let names: Vec<_> = libs.iter().map(|(_, n, m)| format!("{n} ({m})")).collect();
+                    return Err(format!(
+                        "abs library must name one of: {}",
+                        names.join(", ")
+                    ));
+                };
+                let b = client
+                    .ebooks(lib_id)
+                    .map_err(|e| format!("cannot list items of ABS library {lib_name:?}: {e}"))?;
+                println!("loaded {} items from ABS library {lib_name:?}\n", b.len());
+                Ok((b, 0))
+            } else {
+                let dir = books_dir.clone().expect("checked above");
+                let mut opfs: Vec<PathBuf> = std::fs::read_dir(&dir)
+                    .map_err(|e| format!("cannot read {}: {e}", dir.display()))?
                     .filter_map(Result::ok)
                     .map(|e| e.path())
                     .filter(|p| p.extension().is_some_and(|x| x == "opf"))
-                    .collect(),
-                Err(e) => {
-                    eprintln!("cannot read {}: {e}", dir.display());
-                    return std::process::ExitCode::FAILURE;
-                }
-            };
-            opfs.sort();
-            let mut books = Vec::new();
-            for p in &opfs {
-                match opf::read_opf(p) {
-                    Some(b) => books.push(b),
-                    None => {
-                        errors += 1;
-                        println!(
-                            "?? unreadable opf: {}",
-                            p.file_name().unwrap_or_default().to_string_lossy()
-                        );
+                    .collect();
+                opfs.sort();
+                let mut books = Vec::new();
+                let mut unreadable = 0;
+                for p in &opfs {
+                    match opf::read_opf(p) {
+                        Some(b) => books.push(b),
+                        None => {
+                            unreadable += 1;
+                            println!(
+                                "?? unreadable opf: {}",
+                                p.file_name().unwrap_or_default().to_string_lossy()
+                            );
+                        }
                     }
                 }
+                Ok((books, unreadable))
             }
-            books
+        };
+        let mut ebooks = match load() {
+            Ok((b, unreadable)) => {
+                errors += unreadable;
+                b
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                match interval_secs {
+                    Some(secs) => {
+                        eprintln!("cycle aborted; retrying in {secs}s\n");
+                        std::thread::sleep(std::time::Duration::from_secs(secs));
+                        continue;
+                    }
+                    None => return std::process::ExitCode::FAILURE,
+                }
+            }
         };
         ebooks.sort_by(|a, b| a.title.cmp(&b.title));
         ebooks.truncate(limit);
