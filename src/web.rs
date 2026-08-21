@@ -47,15 +47,34 @@ pub fn serve(port: u16, state_path: PathBuf) {
                 .unwrap();
                 let _ = request.respond(tiny_http::Response::from_string(PAGE).with_header(header));
             }
+            (tiny_http::Method::Get, "/api/status") => {
+                let _ = match retrying(|| status_json(&store)) {
+                    Ok(v) => respond_json(request, 200, &v),
+                    Err(e) => respond_json(request, 500, &json!({"error": e})),
+                };
+            }
+            (tiny_http::Method::Get, "/api/notfound") => {
+                let _ = match retrying(|| notfound_json(&store)) {
+                    Ok(v) => respond_json(request, 200, &v),
+                    Err(e) => respond_json(request, 500, &json!({"error": e})),
+                };
+            }
+            (tiny_http::Method::Get, "/api/history") => {
+                let _ = match retrying(|| history_json(&store)) {
+                    Ok(v) => respond_json(request, 200, &v),
+                    Err(e) => respond_json(request, 500, &json!({"error": e})),
+                };
+            }
             (tiny_http::Method::Get, "/api/queue") => {
-                let _ = match queue_json(&store) {
+                let _ = match retrying(|| queue_json(&store)) {
                     Ok(v) => respond_json(request, 200, &v),
                     Err(e) => respond_json(request, 500, &json!({"error": e})),
                 };
             }
             (tiny_http::Method::Get, "/api/alternatives") => {
                 let key = query_param(&query, "key");
-                let _ = match key.map(|k| alternatives_json(&store, &k)) {
+                let custom_q = query_param(&query, "q");
+                let _ = match key.map(|k| alternatives_json(&store, &k, custom_q.as_deref())) {
                     Some(Ok(v)) => respond_json(request, 200, &v),
                     Some(Err(e)) => respond_json(request, 500, &json!({"error": e})),
                     None => respond_json(request, 400, &json!({"error": "missing key"})),
@@ -64,7 +83,7 @@ pub fn serve(port: u16, state_path: PathBuf) {
             (tiny_http::Method::Post, "/api/decide") => {
                 let mut body = String::new();
                 let _ = request.as_reader().read_to_string(&mut body);
-                let _ = match decide(&store, &body) {
+                let _ = match retrying(|| decide(&store, &body)) {
                     Ok(v) => respond_json(request, 200, &v),
                     Err(e) => respond_json(request, 400, &json!({"error": e})),
                 };
@@ -74,6 +93,15 @@ pub fn serve(port: u16, state_path: PathBuf) {
             }
         }
     }
+}
+
+/// SQLite over VirtioFS (macOS Docker) can throw transient errors while the
+/// reconcile thread is mid-write; one short retry absorbs nearly all of them.
+fn retrying<T>(mut f: impl FnMut() -> Result<T, String>) -> Result<T, String> {
+    f().or_else(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        f()
+    })
 }
 
 fn respond_json(request: tiny_http::Request, status: u16, v: &Value) -> Result<(), std::io::Error> {
@@ -140,6 +168,8 @@ pub fn queue_json(store: &Store) -> Result<Value, String> {
                 "candidate": d.note,
                 "asin": d.asin,
                 "confidence": d.confidence,
+                "image_url": d.image_url,
+                "reasons": d.reasons.as_deref().map(|r| r.split(',').collect::<Vec<_>>()).unwrap_or_default(),
             })
         })
         .collect();
@@ -147,7 +177,7 @@ pub fn queue_json(store: &Store) -> Result<Value, String> {
 }
 
 /// Live search for a book's top candidates, scored, with cover art.
-fn alternatives_json(store: &Store, key: &str) -> Result<Value, String> {
+fn alternatives_json(store: &Store, key: &str, custom_q: Option<&str>) -> Result<Value, String> {
     let d = store
         .get(key)
         .map_err(|e| e.to_string())?
@@ -161,7 +191,10 @@ fn alternatives_json(store: &Store, key: &str) -> Result<Value, String> {
         .ebook_author
         .clone()
         .unwrap_or_else(|| key.split('|').next().unwrap_or("").to_string());
-    let q = query_title(&title);
+    let q = match custom_q {
+        Some(c) if !c.trim().is_empty() => c.trim().to_string(),
+        _ => query_title(&title),
+    };
     let primary = matcher::primary_author(&author);
     let author_opt = if primary.is_empty() {
         None
@@ -201,6 +234,72 @@ fn alternatives_json(store: &Store, key: &str) -> Result<Value, String> {
     Ok(json!({"key": key, "ebook_title": title, "items": items}))
 }
 
+/// Dashboard payload: lane counts, coverage, last-cycle summary.
+pub fn status_json(store: &Store) -> Result<Value, String> {
+    let all = store.all().map_err(|e| e.to_string())?;
+    let count = |st: DecisionStatus| all.iter().filter(|d| d.status == st).count();
+    let (m, a, n, sk) = (
+        count(DecisionStatus::Matched),
+        count(DecisionStatus::Ambiguous),
+        count(DecisionStatus::NotFound),
+        count(DecisionStatus::Skipped),
+    );
+    let last_cycle: Value = store
+        .get_meta("last_cycle")
+        .map_err(|e| e.to_string())?
+        .and_then(|v| serde_json::from_str(&v).ok())
+        .unwrap_or(Value::Null);
+    Ok(json!({
+        "counts": {"matched": m, "ambiguous": a, "not_found": n, "skipped": sk},
+        "total": all.len(),
+        "now": now_epoch(),
+        "last_cycle": last_cycle,
+    }))
+}
+
+/// The not-found lane: books awaiting their monthly retry.
+pub fn notfound_json(store: &Store) -> Result<Value, String> {
+    let all = store.all().map_err(|e| e.to_string())?;
+    let items: Vec<Value> = all
+        .iter()
+        .filter(|d| d.status == DecisionStatus::NotFound)
+        .map(|d| {
+            json!({
+                "key": d.ebook_key,
+                "ebook_title": d.ebook_title,
+                "ebook_author": d.ebook_author,
+                "attempts": d.attempts,
+                "next_retry": d.next_retry,
+            })
+        })
+        .collect();
+    Ok(json!({"items": items, "now": now_epoch()}))
+}
+
+/// Every decision, newest first.
+pub fn history_json(store: &Store) -> Result<Value, String> {
+    let mut all = store.all().map_err(|e| e.to_string())?;
+    all.sort_by_key(|d| std::cmp::Reverse(d.updated_at));
+    let items: Vec<Value> = all
+        .iter()
+        .take(300)
+        .map(|d| {
+            json!({
+                "key": d.ebook_key,
+                "ebook_title": d.ebook_title,
+                "ebook_author": d.ebook_author,
+                "status": d.status.as_str(),
+                "candidate": d.note,
+                "asin": d.asin,
+                "confidence": d.confidence,
+                "image_url": d.image_url,
+                "updated_at": d.updated_at,
+            })
+        })
+        .collect();
+    Ok(json!({"items": items, "now": now_epoch()}))
+}
+
 /// Apply a human verdict from the page. Body: {"key","action":"accept"|"skip","asin"?}
 pub fn decide(store: &Store, body: &str) -> Result<Value, String> {
     let v: Value = serde_json::from_str(body).map_err(|e| e.to_string())?;
@@ -210,6 +309,19 @@ pub fn decide(store: &Store, body: &str) -> Result<Value, String> {
     let attempts = prior.as_ref().map(|d| d.attempts).unwrap_or(0);
     let (status, asin, note) = match action {
         "skip" => (DecisionStatus::Skipped, None, "web review: rejected"),
+        "reopen" => {
+            let p = prior.as_ref().ok_or("cannot reopen an unknown book")?;
+            (
+                DecisionStatus::Ambiguous,
+                p.asin.clone(),
+                "web review: reopened",
+            )
+        }
+        "retry" => (
+            DecisionStatus::NotFound,
+            None,
+            "web review: retry requested",
+        ),
         "accept" => {
             let asin = v["asin"]
                 .as_str()
@@ -218,7 +330,7 @@ pub fn decide(store: &Store, body: &str) -> Result<Value, String> {
                 .ok_or("accept needs an asin")?;
             (DecisionStatus::Matched, Some(asin), "web review: accepted")
         }
-        _ => return Err("action must be accept or skip".into()),
+        _ => return Err("action must be accept, skip, reopen, or retry".into()),
     };
     let d = Decision {
         ebook_key: key.clone(),
@@ -231,6 +343,8 @@ pub fn decide(store: &Store, body: &str) -> Result<Value, String> {
         note: Some(note.into()),
         ebook_title: prior.as_ref().and_then(|d| d.ebook_title.clone()),
         ebook_author: prior.as_ref().and_then(|d| d.ebook_author.clone()),
+        image_url: prior.as_ref().and_then(|d| d.image_url.clone()),
+        reasons: prior.as_ref().and_then(|d| d.reasons.clone()),
     };
     store.record(&d).map_err(|e| e.to_string())?;
     Ok(json!({"ok": true, "key": key, "status": d.status.as_str()}))

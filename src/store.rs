@@ -56,6 +56,8 @@ pub struct Decision {
     pub note: Option<String>,    // human context, e.g. the best candidate's title
     pub ebook_title: Option<String>, // the source ebook, for re-search and display
     pub ebook_author: Option<String>,
+    pub image_url: Option<String>, // best candidate's cover art
+    pub reasons: Option<String>,   // comma-joined ambiguity reasons / penalties
 }
 
 /// Stable identity for an ebook across cycles: normalized author + title.
@@ -91,20 +93,32 @@ impl Store {
                  updated_at  INTEGER NOT NULL,
                  note        TEXT,
                  ebook_title TEXT,
-                 ebook_author TEXT
+                 ebook_author TEXT,
+                 image_url   TEXT,
+                 reasons     TEXT
+             );
+             CREATE TABLE IF NOT EXISTS meta (
+                 key   TEXT PRIMARY KEY,
+                 value TEXT NOT NULL
              );",
         )?;
         // migrations for stores created before these columns existed
         let _ = conn.execute("ALTER TABLE decisions ADD COLUMN note TEXT", []);
         let _ = conn.execute("ALTER TABLE decisions ADD COLUMN ebook_title TEXT", []);
         let _ = conn.execute("ALTER TABLE decisions ADD COLUMN ebook_author TEXT", []);
+        let _ = conn.execute("ALTER TABLE decisions ADD COLUMN image_url TEXT", []);
+        let _ = conn.execute("ALTER TABLE decisions ADD COLUMN reasons TEXT", []);
+        let _ = conn.execute(
+            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+            [],
+        );
         Ok(Self { conn })
     }
 
     pub fn get(&self, key: &str) -> rusqlite::Result<Option<Decision>> {
         self.conn
             .query_row(
-                "SELECT ebook_key, status, asin, confidence, attempts, next_retry, updated_at, note, ebook_title, ebook_author
+                "SELECT ebook_key, status, asin, confidence, attempts, next_retry, updated_at, note, ebook_title, ebook_author, image_url, reasons
                  FROM decisions WHERE ebook_key = ?1",
                 params![key],
                 row_to_decision,
@@ -119,8 +133,8 @@ impl Store {
     /// Insert or replace the decision for this ebook (last write wins).
     pub fn record(&self, d: &Decision) -> rusqlite::Result<()> {
         self.conn.execute(
-            "INSERT INTO decisions (ebook_key, status, asin, confidence, attempts, next_retry, updated_at, note, ebook_title, ebook_author)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "INSERT INTO decisions (ebook_key, status, asin, confidence, attempts, next_retry, updated_at, note, ebook_title, ebook_author, image_url, reasons)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
              ON CONFLICT(ebook_key) DO UPDATE SET
                  status = excluded.status,
                  asin = excluded.asin,
@@ -130,7 +144,9 @@ impl Store {
                  updated_at = excluded.updated_at,
                  note = excluded.note,
                  ebook_title = excluded.ebook_title,
-                 ebook_author = excluded.ebook_author",
+                 ebook_author = excluded.ebook_author,
+                 image_url = excluded.image_url,
+                 reasons = excluded.reasons",
             params![
                 d.ebook_key,
                 d.status.as_str(),
@@ -141,7 +157,9 @@ impl Store {
                 d.updated_at,
                 d.note,
                 d.ebook_title,
-                d.ebook_author
+                d.ebook_author,
+                d.image_url,
+                d.reasons
             ],
         )?;
         Ok(())
@@ -149,11 +167,34 @@ impl Store {
 
     pub fn all(&self) -> rusqlite::Result<Vec<Decision>> {
         let mut stmt = self.conn.prepare(
-            "SELECT ebook_key, status, asin, confidence, attempts, next_retry, updated_at, note, ebook_title, ebook_author
+            "SELECT ebook_key, status, asin, confidence, attempts, next_retry, updated_at, note, ebook_title, ebook_author, image_url, reasons
              FROM decisions ORDER BY ebook_key",
         )?;
         let rows = stmt.query_map([], row_to_decision)?;
         rows.collect()
+    }
+}
+
+impl Store {
+    pub fn set_meta(&self, key: &str, value: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_meta(&self, key: &str) -> rusqlite::Result<Option<String>> {
+        self.conn
+            .query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| {
+                r.get(0)
+            })
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })
     }
 }
 
@@ -170,6 +211,8 @@ fn row_to_decision(row: &rusqlite::Row<'_>) -> rusqlite::Result<Decision> {
         note: row.get(7)?,
         ebook_title: row.get(8)?,
         ebook_author: row.get(9)?,
+        image_url: row.get(10)?,
+        reasons: row.get(11)?,
     })
 }
 

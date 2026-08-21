@@ -87,6 +87,8 @@ fn apply_overrides(
                         note: Some("manual override: skip".into()),
                         ebook_title: prior.as_ref().and_then(|d| d.ebook_title.clone()),
                         ebook_author: prior.as_ref().and_then(|d| d.ebook_author.clone()),
+                        image_url: prior.as_ref().and_then(|d| d.image_url.clone()),
+                        reasons: None,
                     };
                     if store.record(&d).is_ok() {
                         println!("override: {key} = skip");
@@ -109,6 +111,8 @@ fn apply_overrides(
                         note: Some("manual override".into()),
                         ebook_title: prior.as_ref().and_then(|d| d.ebook_title.clone()),
                         ebook_author: prior.as_ref().and_then(|d| d.ebook_author.clone()),
+                        image_url: prior.as_ref().and_then(|d| d.image_url.clone()),
+                        reasons: None,
                     };
                     if store.record(&d).is_ok() {
                         println!("override: {key} = {asin}");
@@ -496,6 +500,22 @@ fn main() -> std::process::ExitCode {
                     note: result.best.as_ref().map(|b| b.title.clone()),
                     ebook_title: Some(ebook.title.clone()),
                     ebook_author: Some(ebook.author.clone()),
+                    image_url: result.best.as_ref().and_then(|b| b.image_url.clone()),
+                    reasons: {
+                        let mut r: Vec<String> = result
+                            .best
+                            .as_ref()
+                            .map(|b| b.penalties.iter().map(|p| p.to_string()).collect())
+                            .unwrap_or_default();
+                        if narratarr::matcher::primary_author(&ebook.author).is_empty() {
+                            r.push("no-author-metadata".into());
+                        }
+                        if r.is_empty() {
+                            None
+                        } else {
+                            Some(r.join(","))
+                        }
+                    },
                 };
                 if let Err(e) = s.record(&decision) {
                     eprintln!("!! failed to record decision for {key}: {e}");
@@ -559,6 +579,20 @@ fn main() -> std::process::ExitCode {
                 "listenarr: {} present / {} would add (dry-run) / {} added / {} errors",
                 sync.present, sync.would_add, sync.added, sync.errors
             );
+        }
+
+        if let Some(s) = &state {
+            let now = store::now_epoch();
+            let summary = serde_json::json!({
+                "at": now,
+                "matched": matched, "ambiguous": ambiguous, "not_found": not_found,
+                "errors": errors, "skipped": skipped,
+                "listenarr": {"present": sync.present, "would_add": sync.would_add,
+                               "added": sync.added, "errors": sync.errors},
+                "apply": apply,
+                "next_cycle_at": interval_secs.map(|secs| now + secs as i64),
+            });
+            let _ = s.set_meta("last_cycle", &summary.to_string());
         }
 
         if let (Some(s), Some(rp)) = (&state, &report_path) {

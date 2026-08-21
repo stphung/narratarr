@@ -8,55 +8,117 @@
   :root {
     --bg: #14151a; --card: #1e2026; --edge: #2c2f38; --text: #e6e6e9;
     --dim: #9a9daa; --accent: #7aa2f7; --good: #4fd18b; --bad: #f7768e;
+    --warn: #e0af68;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
-  header { padding: 18px 24px; border-bottom: 1px solid var(--edge);
-           display: flex; align-items: baseline; gap: 12px; }
-  header h1 { margin: 0; font-size: 20px; letter-spacing: .5px; }
-  header .tag { color: var(--dim); font-size: 13px; }
-  #count { margin-left: auto; color: var(--dim); font-size: 13px; }
-  main { max-width: 900px; margin: 0 auto; padding: 20px; }
+  header { padding: 14px 24px 0; border-bottom: 1px solid var(--edge); }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .brand h1 { margin: 0; font-size: 20px; letter-spacing: .5px; }
+  .brand .tag { color: var(--dim); font-size: 13px; }
+  #status { margin-left: auto; color: var(--dim); font-size: 13px; text-align: right; }
+  #status b { color: var(--text); font-weight: 500; }
+  .coverage { margin: 10px 0 0; }
+  .coverage .bar { height: 6px; background: #262933; border-radius: 3px; overflow: hidden; }
+  .coverage .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--good)); width: 0; transition: width .6s; }
+  .coverage .label { font-size: 12.5px; color: var(--dim); margin-top: 4px; }
+  nav { display: flex; gap: 4px; margin-top: 12px; }
+  nav button { border: 0; border-bottom: 2px solid transparent; background: none;
+               color: var(--dim); padding: 8px 14px; font-size: 14px; cursor: pointer; }
+  nav button.on { color: var(--text); border-bottom-color: var(--accent); }
+  main { max-width: 940px; margin: 0 auto; padding: 20px; }
   .card { background: var(--card); border: 1px solid var(--edge); border-radius: 10px;
-          padding: 16px; margin-bottom: 14px; }
+          padding: 14px; margin-bottom: 12px; display: flex; gap: 14px; }
+  .card.sel { border-color: var(--accent); }
+  .cover { width: 72px; height: 72px; border-radius: 8px; object-fit: cover;
+           background: #2a2d36; flex: none; }
+  .body { min-width: 0; flex: 1; }
   .book { font-weight: 600; font-size: 16px; }
   .book small { color: var(--dim); font-weight: 400; }
-  .best { color: var(--dim); margin: 6px 0 10px; font-size: 14px; }
+  .best { color: var(--dim); margin: 4px 0 8px; font-size: 14px; }
   .best b { color: var(--text); font-weight: 500; }
   .conf { color: var(--accent); }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; }
-  button { border: 1px solid var(--edge); background: #262933; color: var(--text);
-           border-radius: 7px; padding: 7px 14px; font-size: 14px; cursor: pointer; }
-  button:hover { border-color: var(--accent); }
+  .chips { display: inline-flex; gap: 6px; margin-left: 8px; vertical-align: middle; }
+  .chip { font-size: 11.5px; padding: 1px 8px; border-radius: 9px; border: 1px solid var(--warn);
+          color: var(--warn); white-space: nowrap; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button.act { border: 1px solid var(--edge); background: #262933; color: var(--text);
+               border-radius: 7px; padding: 6px 13px; font-size: 14px; cursor: pointer; }
+  button.act:hover { border-color: var(--accent); }
   button.accept { border-color: var(--good); color: var(--good); }
   button.reject { border-color: var(--bad); color: var(--bad); }
-  .alts { margin-top: 12px; display: none; }
-  .alt { display: flex; gap: 12px; align-items: center; padding: 9px;
-         border: 1px solid var(--edge); border-radius: 8px; margin-bottom: 8px;
-         cursor: pointer; }
+  .alts { margin-top: 10px; display: none; }
+  .search { display: flex; gap: 8px; margin-bottom: 8px; }
+  .search input { flex: 1; background: #14151a; border: 1px solid var(--edge); color: var(--text);
+                  border-radius: 7px; padding: 6px 10px; font-size: 14px; }
+  .alt { display: flex; gap: 12px; align-items: center; padding: 8px;
+         border: 1px solid var(--edge); border-radius: 8px; margin-bottom: 7px; cursor: pointer; }
   .alt:hover { border-color: var(--good); background: #23262e; }
-  .alt img { width: 56px; height: 56px; border-radius: 6px; object-fit: cover;
-             background: #333; flex: none; }
+  .alt img { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; background: #333; flex: none; }
   .alt .meta { min-width: 0; }
   .alt .t { font-weight: 500; }
   .alt .n { color: var(--dim); font-size: 13px; }
   .alt .score { margin-left: auto; color: var(--accent); font-size: 13px; flex: none; }
-  .done { opacity: .45; pointer-events: none; }
+  .done { opacity: .4; pointer-events: none; }
   .empty { text-align: center; color: var(--dim); padding: 60px 0; }
   .note { color: var(--dim); font-size: 12.5px; margin-top: 4px; }
+  .kbd { color: var(--dim); font-size: 12.5px; margin: 4px 0 14px; }
+  .kbd b { color: var(--text); background: #262933; border-radius: 4px; padding: 0 6px; font-weight: 500; }
+  .hrow { display: flex; gap: 12px; align-items: center; background: var(--card);
+          border: 1px solid var(--edge); border-radius: 9px; padding: 9px 12px; margin-bottom: 8px; }
+  .hrow img { width: 40px; height: 40px; border-radius: 5px; object-fit: cover; background: #2a2d36; flex: none; }
+  .st { font-size: 12px; padding: 1px 9px; border-radius: 9px; border: 1px solid; flex: none; }
+  .st.matched { color: var(--good); border-color: var(--good); }
+  .st.ambiguous { color: var(--warn); border-color: var(--warn); }
+  .st.not_found { color: var(--dim); border-color: var(--edge); }
+  .st.skipped { color: var(--bad); border-color: var(--bad); }
+  .hmeta { min-width: 0; flex: 1; }
+  .hmeta .n { color: var(--dim); font-size: 13px; }
+  .asin-box { display: flex; gap: 6px; }
+  .asin-box input { width: 130px; background: #14151a; border: 1px solid var(--edge);
+                    color: var(--text); border-radius: 7px; padding: 5px 8px; font-size: 13px; }
+  #toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+           background: #262933; border: 1px solid var(--edge); border-radius: 9px;
+           padding: 10px 16px; display: none; align-items: center; gap: 12px;
+           box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+  #toast button { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 14px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>narratarr</h1><span class="tag">review queue</span>
-  <span id="count"></span>
+  <div class="brand">
+    <h1>narratarr</h1><span class="tag">the narrator for your bookshelf</span>
+    <div id="status">loading…</div>
+  </div>
+  <div class="coverage">
+    <div class="bar"><div class="fill" id="covfill"></div></div>
+    <div class="label" id="covlabel"></div>
+  </div>
+  <nav>
+    <button id="tab-review" class="on">Review</button>
+    <button id="tab-notfound">Not found</button>
+    <button id="tab-history">History</button>
+  </nav>
 </header>
-<main id="list"><div class="empty">loading…</div></main>
+<main id="main"></main>
+<div id="toast"><span id="toastmsg"></span><button id="toastundo">undo</button></div>
 <script>
-const list = document.getElementById('list');
-const count = document.getElementById('count');
-let remaining = 0;
+const main = document.getElementById('main');
+const statusEl = document.getElementById('status');
+let view = 'review';
+let cards = [];       // review card elements, for keyboard nav
+let selected = -1;
+let lastDecision = null;
+
+const REASON_LABELS = {
+  'no-author-metadata': 'ebook has no author',
+  'title-extra-words': 'title differs',
+  'dramatized': 'dramatized edition',
+  'abridged': 'abridged',
+  'language-mismatch': 'language mismatch',
+  'derivative-work': 'derivative work',
+};
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -65,24 +127,74 @@ function el(tag, cls, text) {
   return e;
 }
 
-function setCount() {
-  count.textContent = remaining
-    ? remaining + ' book' + (remaining === 1 ? '' : 's') + ' awaiting review'
-    : 'queue clear';
+function ago(epoch, now) {
+  const s = now - epoch;
+  if (s < 90) return 'just now';
+  if (s < 5400) return Math.round(s / 60) + 'm ago';
+  if (s < 129600) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+}
+function until(epoch, now) {
+  const s = epoch - now;
+  if (s <= 0) return 'next cycle';
+  if (s < 5400) return 'in ' + Math.round(s / 60) + 'm';
+  return 'in ' + Math.round(s / 3600) + 'h';
 }
 
-async function decide(card, key, action, asin) {
-  const r = await fetch('/api/decide', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({key, action, asin}),
-  });
-  if (r.ok) {
-    card.classList.add('done');
-    remaining--; setCount();
-  } else {
-    alert('failed: ' + (await r.json()).error);
+async function loadStatus() {
+  const d = await (await fetch('/api/status')).json();
+  const c = d.counts;
+  const lc = d.last_cycle;
+  let line = '';
+  if (lc && lc.at) {
+    line = 'last cycle <b>' + ago(lc.at, d.now) + '</b> · ' +
+      (lc.errors ? '<b>' + lc.errors + ' errors</b>' : 'no errors') +
+      (lc.next_cycle_at ? ' · next ' + until(lc.next_cycle_at, d.now) : '') +
+      (lc.apply ? '' : ' · <b>dry-run</b>');
   }
+  statusEl.innerHTML = line || '&nbsp;';
+  const audio = c.matched;
+  const denom = d.total || 1;
+  const pct = Math.round(100 * audio / denom);
+  document.getElementById('covfill').style.width = pct + '%';
+  document.getElementById('covlabel').textContent =
+    pct + '% of your shelf has its audiobook (' + audio + ' of ' + d.total +
+    ' · ' + c.ambiguous + ' to review · ' + c.not_found + ' not found yet)';
+  document.getElementById('tab-review').textContent = 'Review (' + c.ambiguous + ')';
+  document.getElementById('tab-notfound').textContent = 'Not found (' + c.not_found + ')';
+}
+
+function toast(msg, undoFn) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastmsg').textContent = msg;
+  const u = document.getElementById('toastundo');
+  u.style.display = undoFn ? '' : 'none';
+  u.onclick = () => { undoFn(); t.style.display = 'none'; };
+  t.style.display = 'flex';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.style.display = 'none', 6000);
+}
+
+async function post(body) {
+  const r = await fetch('/api/decide', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.json()).error);
+  return r.json();
+}
+
+async function decide(card, item, action, asin, label) {
+  try {
+    await post({key: item.key, action, asin});
+    if (card) card.classList.add('done');
+    loadStatus();
+    toast(label, async () => {
+      await post({key: item.key, action: 'reopen'});
+      if (card) card.classList.remove('done');
+      loadStatus();
+    });
+  } catch (e) { alert('failed: ' + e.message); }
 }
 
 function runtime(min) {
@@ -90,15 +202,18 @@ function runtime(min) {
   return ' · ' + Math.floor(min / 60) + 'h ' + (min % 60) + 'm';
 }
 
-async function loadAlternatives(card, key, box, btn) {
-  btn.disabled = true; btn.textContent = 'searching…';
-  const r = await fetch('/api/alternatives?key=' + encodeURIComponent(key));
-  btn.textContent = 'alternatives';
-  btn.disabled = false;
+async function loadAlternatives(card, item, box, btn, customQ) {
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'searching…';
+  const url = '/api/alternatives?key=' + encodeURIComponent(item.key) +
+    (customQ ? '&q=' + encodeURIComponent(customQ) : '');
+  const r = await fetch(url);
+  btn.textContent = orig; btn.disabled = false;
   if (!r.ok) { alert('search failed'); return; }
   const data = await r.json();
-  box.textContent = '';
-  if (!data.items.length) box.append(el('div', 'note', 'no candidates found'));
+  let list = box.querySelector('.altlist');
+  if (!list) { list = el('div', 'altlist'); box.append(list); }
+  list.textContent = '';
+  if (!data.items.length) list.append(el('div', 'note', 'no candidates found — try editing the search'));
   for (const it of data.items) {
     const row = el('div', 'alt');
     const img = el('img');
@@ -112,53 +227,181 @@ async function loadAlternatives(card, key, box, btn) {
     const score = el('div', 'score', it.total.toFixed(2));
     row.append(img, meta, score);
     row.title = 'accept this edition';
-    row.onclick = () => decide(card, key, 'accept', it.asin);
-    box.append(row);
+    row.onclick = () => decide(card, item, 'accept', it.asin, 'accepted: ' + it.title);
+    list.append(row);
   }
   box.style.display = 'block';
 }
 
-function card(item) {
+function reviewCard(item) {
   const c = el('div', 'card');
+  const img = el('img', 'cover');
+  if (item.image_url) img.src = item.image_url;
+  const body = el('div', 'body');
   const title = el('div', 'book', item.ebook_title || item.key.split('|')[1] || item.key);
-  if (item.ebook_author) {
-    title.append(' ');
-    const a = el('small', '', '— ' + item.ebook_author);
-    title.append(a);
-  }
+  if (item.ebook_author) title.append(' ', el('small', '', '— ' + item.ebook_author));
   const best = el('div', 'best');
   best.append('best candidate: ');
   best.append(el('b', '', item.candidate || '(unknown)'));
-  if (item.confidence != null) {
-    best.append(' ');
-    best.append(el('span', 'conf', item.confidence.toFixed(2)));
+  if (item.confidence != null) best.append(' ', el('span', 'conf', item.confidence.toFixed(2)));
+  if ((item.reasons || []).length) {
+    const chips = el('span', 'chips');
+    for (const r of item.reasons) chips.append(el('span', 'chip', REASON_LABELS[r] || r));
+    best.append(chips);
   }
   const row = el('div', 'row');
-  const accept = el('button', 'accept', 'accept best');
-  accept.onclick = () => decide(c, item.key, 'accept', item.asin);
-  const alts = el('button', '', 'alternatives');
-  const reject = el('button', 'reject', 'no audiobook wanted');
-  reject.onclick = () => decide(c, item.key, 'skip');
+  const accept = el('button', 'act accept', 'accept best');
+  accept.onclick = () => decide(c, item, 'accept', item.asin, 'accepted: ' + (item.candidate || item.key));
+  const alts = el('button', 'act', 'alternatives');
+  const reject = el('button', 'act reject', 'no audiobook wanted');
+  reject.onclick = () => decide(c, item, 'skip', null, 'rejected: ' + (item.ebook_title || item.key));
   const box = el('div', 'alts');
-  alts.onclick = () => loadAlternatives(c, item.key, box, alts);
+  const search = el('div', 'search');
+  const input = el('input');
+  input.placeholder = 'edit search… (fix typos, add author)';
+  input.value = item.ebook_title || '';
+  const go = el('button', 'act', 'search');
+  go.onclick = () => loadAlternatives(c, item, box, go, input.value);
+  input.onkeydown = e => { if (e.key === 'Enter') go.onclick(); e.stopPropagation(); };
+  search.append(input, go);
+  box.append(search);
+  alts.onclick = () => {
+    if (box.style.display === 'block') { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    if (!box.querySelector('.altlist')) loadAlternatives(c, item, box, alts);
+  };
   row.append(accept, alts, reject);
-  c.append(title, best, row, box,
-    el('div', 'note', 'accepted books sync to Listenarr on the next cycle'));
+  body.append(title, best, row, box);
+  c.append(img, body);
+  c._item = item; c._accept = accept; c._reject = reject; c._alts = alts;
   return c;
 }
 
-(async () => {
-  const r = await fetch('/api/queue');
-  const data = await r.json();
-  list.textContent = '';
-  remaining = data.items.length;
-  setCount();
-  if (!remaining) {
-    list.append(el('div', 'empty', 'nothing to review — narratarr is all caught up'));
+function select(i) {
+  if (selected >= 0 && cards[selected]) cards[selected].classList.remove('sel');
+  selected = i;
+  if (selected >= 0 && cards[selected]) {
+    cards[selected].classList.add('sel');
+    cards[selected].scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (view !== 'review' || e.target.tagName === 'INPUT') return;
+  const live = cards.filter(c => !c.classList.contains('done'));
+  if (!live.length) return;
+  const liveIdx = cards.indexOf(cards[selected]) >= 0 ? selected : cards.indexOf(live[0]);
+  if (e.key === 'j') select(Math.min(cards.length - 1, (selected < 0 ? -1 : selected) + 1));
+  else if (e.key === 'k') select(Math.max(0, selected - 1));
+  else if (selected >= 0 && !cards[selected].classList.contains('done')) {
+    if (e.key === 'a') cards[selected]._accept.onclick();
+    else if (e.key === 'x') cards[selected]._reject.onclick();
+    else if (e.key === 'Enter') cards[selected]._alts.onclick();
+  }
+});
+
+async function showReview() {
+  view = 'review'; main.textContent = ''; cards = []; selected = -1;
+  const d = await (await fetch('/api/queue')).json();
+  if (!d.items.length) {
+    main.append(el('div', 'empty', 'nothing to review — narratarr is all caught up'));
     return;
   }
-  for (const item of data.items) list.append(card(item));
-})();
+  main.append(el('div', 'kbd')).innerHTML =
+    '<b>j</b>/<b>k</b> move · <b>a</b> accept · <b>x</b> reject · <b>enter</b> alternatives';
+  for (const item of d.items) {
+    const c = reviewCard(item);
+    cards.push(c);
+    main.append(c);
+  }
+}
+
+async function showNotFound() {
+  view = 'notfound'; main.textContent = '';
+  const d = await (await fetch('/api/notfound')).json();
+  if (!d.items.length) {
+    main.append(el('div', 'empty', 'every book has an audiobook or a decision — nothing pending'));
+    return;
+  }
+  main.append(el('div', 'kbd')).innerHTML =
+    'No audiobook edition was found for these. Each retries automatically; ' +
+    '<b>retry now</b> queues an immediate re-search, or paste an <b>ASIN</b> if you know the right one.';
+  for (const item of d.items) {
+    const row = el('div', 'hrow');
+    const meta = el('div', 'hmeta');
+    meta.append(el('div', 't', item.ebook_title || item.key));
+    meta.append(el('div', 'n', (item.ebook_author || '') +
+      ' · attempt ' + item.attempts +
+      (item.next_retry ? ' · retries ' + until(item.next_retry, d.now) : ' · retries next cycle')));
+    const retry = el('button', 'act', 'retry now');
+    retry.onclick = async () => {
+      try {
+        await post({key: item.key, action: 'retry'});
+        retry.textContent = 'queued'; retry.disabled = true;
+        toast('will re-search on the next cycle');
+      } catch (e) { alert(e.message); }
+    };
+    const asinBox = el('div', 'asin-box');
+    const input = el('input');
+    input.placeholder = 'ASIN';
+    const acc = el('button', 'act accept', 'add');
+    acc.onclick = async () => {
+      if (!input.value.trim()) return;
+      try {
+        await post({key: item.key, action: 'accept', asin: input.value.trim()});
+        row.classList.add('done'); loadStatus();
+        toast('accepted by ASIN');
+      } catch (e) { alert(e.message); }
+    };
+    asinBox.append(input, acc);
+    row.append(meta, retry, asinBox);
+    main.append(row);
+  }
+}
+
+async function showHistory() {
+  view = 'history'; main.textContent = '';
+  const d = await (await fetch('/api/history')).json();
+  if (!d.items.length) { main.append(el('div', 'empty', 'no decisions yet')); return; }
+  for (const item of d.items) {
+    const row = el('div', 'hrow');
+    const img = el('img');
+    if (item.image_url) img.src = item.image_url;
+    const st = el('span', 'st ' + item.status, item.status.replace('_', ' '));
+    const meta = el('div', 'hmeta');
+    meta.append(el('div', 't', item.ebook_title || item.key));
+    meta.append(el('div', 'n',
+      (item.candidate ? item.candidate + (item.asin ? ' [' + item.asin + ']' : '') + ' · ' : '') +
+      ago(item.updated_at, d.now)));
+    row.append(img, st, meta);
+    if (item.status === 'matched' || item.status === 'skipped') {
+      const re = el('button', 'act', 'reopen');
+      re.onclick = async () => {
+        try {
+          await post({key: item.key, action: 'reopen'});
+          st.textContent = 'ambiguous'; st.className = 'st ambiguous';
+          loadStatus();
+          toast('moved back to review');
+        } catch (e) { alert(e.message); }
+      };
+      row.append(re);
+    }
+    main.append(row);
+  }
+}
+
+const tabs = {review: showReview, notfound: showNotFound, history: showHistory};
+for (const t of ['review', 'notfound', 'history']) {
+  document.getElementById('tab-' + t).onclick = () => {
+    for (const x of ['review', 'notfound', 'history'])
+      document.getElementById('tab-' + x).classList.toggle('on', x === t);
+    tabs[t]();
+  };
+}
+
+loadStatus();
+showReview();
+setInterval(loadStatus, 60000);
 </script>
 </body>
 </html>
