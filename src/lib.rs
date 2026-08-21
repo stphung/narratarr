@@ -4,6 +4,7 @@
 //! each ebook to its audiobook edition.
 
 pub mod audible;
+pub mod listenarr;
 pub mod matcher;
 pub mod opf;
 pub mod store;

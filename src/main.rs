@@ -3,10 +3,55 @@
 //!     narratarr /path/to/books --limit 10 [--verbose]
 
 use narratarr::audible;
+use narratarr::listenarr::{self, AddOutcome, BookMetadata};
 use narratarr::matcher::{match_ebook, query_title, Status};
 use narratarr::opf;
 use narratarr::store::{self, Decision, DecisionStatus, Store, NOT_FOUND_RETRY_SECS};
 use std::path::PathBuf;
+
+#[derive(Default)]
+struct SyncStats {
+    present: usize,
+    would_add: usize,
+    added: usize,
+    errors: usize,
+}
+
+/// Check-then-act sync of one matched book into Listenarr. Without --apply
+/// this only reports what it WOULD do.
+fn sync_matched(
+    client: &listenarr::Client,
+    apply: bool,
+    auto_search: bool,
+    meta: &BookMetadata,
+    stats: &mut SyncStats,
+) {
+    match client.exists_by_asin(&meta.asin) {
+        Ok(true) => stats.present += 1,
+        Ok(false) if apply => match client.add(meta, true, auto_search) {
+            Ok(AddOutcome::Added) => {
+                println!("++ added to listenarr: {} [{}]", meta.title, meta.asin);
+                stats.added += 1;
+            }
+            Ok(AddOutcome::AlreadyExists) => stats.present += 1,
+            Err(e) => {
+                println!(
+                    "!! listenarr add failed: {} [{}]: {e}",
+                    meta.title, meta.asin
+                );
+                stats.errors += 1;
+            }
+        },
+        Ok(false) => {
+            println!("DRY-RUN would add: {} [{}]", meta.title, meta.asin);
+            stats.would_add += 1;
+        }
+        Err(e) => {
+            println!("!! listenarr lookup failed for {}: {e}", meta.asin);
+            stats.errors += 1;
+        }
+    }
+}
 
 fn main() -> std::process::ExitCode {
     let mut args = std::env::args().skip(1);
@@ -15,12 +60,20 @@ fn main() -> std::process::ExitCode {
     let mut verbose = false;
     let mut lang = String::from("en");
     let mut state_path: Option<PathBuf> = None;
+    let mut listenarr_url: Option<String> = None;
+    let mut listenarr_key: Option<String> = None;
+    let mut apply = false;
+    let mut auto_search = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--limit" => limit = args.next().and_then(|v| v.parse().ok()).unwrap_or(10),
             "--verbose" => verbose = true,
             "--lang" => lang = args.next().unwrap_or_else(|| "en".into()),
             "--state" => state_path = args.next().map(PathBuf::from),
+            "--listenarr" => listenarr_url = args.next(),
+            "--listenarr-key" => listenarr_key = args.next(),
+            "--apply" => apply = true,
+            "--auto-search" => auto_search = true,
             _ => books_dir = Some(PathBuf::from(a)),
         }
     }
@@ -40,6 +93,18 @@ fn main() -> std::process::ExitCode {
         },
         None => None,
     };
+    let larr = match (&listenarr_url, &listenarr_key) {
+        (Some(u), Some(k)) => Some(listenarr::Client::new(u, k)),
+        (Some(_), None) | (None, Some(_)) => {
+            eprintln!("--listenarr and --listenarr-key must be given together");
+            return std::process::ExitCode::FAILURE;
+        }
+        (None, None) => None,
+    };
+    if larr.is_some() && !apply {
+        println!("listenarr sync in DRY-RUN mode (pass --apply to make changes)\n");
+    }
+    let mut sync = SyncStats::default();
 
     let mut opfs: Vec<PathBuf> = match std::fs::read_dir(&dir) {
         Ok(rd) => rd
@@ -71,11 +136,28 @@ fn main() -> std::process::ExitCode {
         // by scraper-sourced epubs); the user's preferred language is config.
         ebook.language = Some(lang.clone());
 
-        // Idempotency: a prior decision means this book needs no work now.
+        // Idempotency: a prior decision means no MATCHING work — but a prior
+        // matched book still gets its Listenarr presence verified (cheap local
+        // GET), so state added before Listenarr was configured still syncs.
         let key = store::ebook_key(&ebook.title, &ebook.author);
         if let Some(s) = &state {
             let prior = s.get(&key).unwrap_or(None);
             if !store::is_actionable(prior.as_ref(), store::now_epoch()) {
+                if let (Some(lc), Some(d)) = (&larr, &prior) {
+                    if d.status == DecisionStatus::Matched {
+                        if let Some(asin) = &d.asin {
+                            let meta = BookMetadata {
+                                asin: asin.clone(),
+                                title: ebook.title.clone(),
+                                subtitle: None,
+                                authors: vec![narratarr::matcher::primary_author(&ebook.author)],
+                                narrators: vec![],
+                                language: ebook.language.clone(),
+                            };
+                            sync_matched(lc, apply, auto_search, &meta, &mut sync);
+                        }
+                    }
+                }
                 skipped += 1;
                 continue;
             }
@@ -141,6 +223,24 @@ fn main() -> std::process::ExitCode {
             }
         }
 
+        if let (Some(lc), Status::Matched, Some(best)) = (&larr, result.status, &result.best) {
+            if let Some(asin) = &best.asin {
+                // full metadata from the winning candidate; server enriches the rest
+                let cand = candidates.iter().find(|c| c.asin.as_deref() == Some(asin));
+                let meta = BookMetadata {
+                    asin: asin.clone(),
+                    title: cand
+                        .map(|c| c.title.clone())
+                        .unwrap_or_else(|| ebook.title.clone()),
+                    subtitle: cand.and_then(|c| c.subtitle.clone()),
+                    authors: cand.map(|c| c.authors.clone()).unwrap_or_default(),
+                    narrators: cand.map(|c| c.narrators.clone()).unwrap_or_default(),
+                    language: cand.and_then(|c| c.language.clone()),
+                };
+                sync_matched(lc, apply, auto_search, &meta, &mut sync);
+            }
+        }
+
         let mut line = format!(
             "{icon}  {:<48} | {:<22}",
             truncate(&ebook.title, 48),
@@ -175,6 +275,12 @@ fn main() -> std::process::ExitCode {
     println!(
         "\n{matched} matched / {ambiguous} ambiguous / {not_found} not found / {errors} errors / {skipped} skipped (prior decision)"
     );
+    if larr.is_some() {
+        println!(
+            "listenarr: {} present / {} would add (dry-run) / {} added / {} errors",
+            sync.present, sync.would_add, sync.added, sync.errors
+        );
+    }
     std::process::ExitCode::SUCCESS
 }
 
